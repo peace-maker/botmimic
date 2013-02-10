@@ -7,7 +7,6 @@
 #include <botmimic>
 
 #undef REQUIRE_EXTENSIONS
-#undef AUTOLOAD_EXTENSIONS
 #include <dhooks>
 
 #define PLUGIN_VERSION "2.0"
