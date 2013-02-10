@@ -6,6 +6,10 @@
 #include <smlib>
 #include <botmimic>
 
+#undef REQUIRE_EXTENSIONS
+#undef AUTOLOAD_EXTENSIONS
+#include <dhooks>
+
 #define PLUGIN_VERSION "2.0"
 
 #define BM_MAGIC 0xdeadbeef
@@ -13,7 +17,12 @@
 
 #define DEFAULT_RECORD_FOLDER "data/botmimic/"
 
-#define FRAME_INFO_SIZE 13
+// Flags set in FramInfo.additionalFields to inform, that there's more info afterwards.
+#define ADDITIONAL_FIELD_TELEPORTED_ORIGIN (1<<0)
+#define ADDITIONAL_FIELD_TELEPORTED_ANGLES (1<<1)
+#define ADDITIONAL_FIELD_TELEPORTED_VELOCITY (1<<2)
+
+#define FRAME_INFO_SIZE 14
 enum FrameInfo {
 	playerButtons = 0,
 	playerImpulse,
@@ -22,7 +31,20 @@ enum FrameInfo {
 	Float:predictedAngles[2], // Ignore roll
 	CSWeaponID:newWeapon,
 	playerSubtype,
-	playerSeed
+	playerSeed,
+	additionalFields // see ADDITIONAL_FIELD_* defines
+}
+
+#define AT_SIZE 10
+#define AT_ORIGIN 0
+#define AT_ANGLES 1
+#define AT_VELOCITY 2
+#define AT_FLAGS 3
+enum AdditionalTeleport {
+	Float:atOrigin[3],
+	Float:atAngles[3],
+	Float:atVelocity[3],
+	atFlags
 }
 
 #define FILE_HEADER_LENGTH 74
@@ -41,6 +63,8 @@ new Float:g_fInitialPosition[MAXPLAYERS+1][3];
 new Float:g_fInitialAngles[MAXPLAYERS+1][3];
 // Array of frames
 new Handle:g_hRecording[MAXPLAYERS+1];
+new Handle:g_hRecordingAdditionalTeleport[MAXPLAYERS+1];
+new g_iCurrentAdditionalTeleportIndex[MAXPLAYERS+1];
 // How many calls to OnPlayerRunCmd were recorded?
 new g_iRecordedTicks[MAXPLAYERS+1];
 // What's the last active weapon
@@ -52,6 +76,7 @@ new String:g_sRecordCategory[MAXPLAYERS+1][PLATFORM_MAX_PATH];
 new String:g_sRecordSubDir[MAXPLAYERS+1][PLATFORM_MAX_PATH];
 
 new Handle:g_hLoadedRecords;
+new Handle:g_hLoadedRecordsAdditionalTeleport;
 new Handle:g_hLoadedRecordsCategory;
 new Handle:g_hSortedRecordList;
 new Handle:g_hSortedCategoryList;
@@ -68,6 +93,9 @@ new Handle:g_hfwdOnRecordDeleted;
 new Handle:g_hfwdOnPlayerStartsMimicing;
 new Handle:g_hfwdOnPlayerStopsMimicing;
 new Handle:g_hfwdOnPlayerMimicLoops;
+
+// DHooks
+new Handle:g_hTeleport;
 
 public Plugin:myinfo = 
 {
@@ -116,6 +144,7 @@ public OnPluginStart()
 	
 	// Maps path to .rec -> record enum
 	g_hLoadedRecords = CreateTrie();
+	g_hLoadedRecordsAdditionalTeleport = CreateTrie();
 	
 	// Maps path to .rec -> record category
 	g_hLoadedRecordsCategory = CreateTrie();
@@ -126,6 +155,22 @@ public OnPluginStart()
 	
 	HookEvent("player_spawn", Event_OnPlayerSpawn);
 	HookEvent("player_death", Event_OnPlayerDeath);
+	
+	// Optionally setup a hook on CBaseEntity::Teleport to keep track of sudden place changes
+	new Handle:hGameData = LoadGameConfigFile("sdktools.games/game.cstrike");
+	if(hGameData == INVALID_HANDLE)
+		return;
+	new iOffset = GameConfGetOffset(hGameData, "Teleport");
+	CloseHandle(hGameData);
+	if(iOffset == -1)
+		return;
+	
+	g_hTeleport = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, DHooks_OnTeleport);
+	if(g_hTeleport == INVALID_HANDLE)
+		return;
+	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+	DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
+	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
 }
 
 public ConVar_VersionChanged(Handle:convar, const String:oldValue[], const String:newValue[])
@@ -142,14 +187,18 @@ public OnMapStart()
 	new iSize = GetArraySize(g_hSortedRecordList);
 	decl String:sPath[PLATFORM_MAX_PATH];
 	new iFileHeader[FILE_HEADER_LENGTH];
+	new Handle:hAdditionalTeleport;
 	for(new i=0;i<iSize;i++)
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
 		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
 		if(iFileHeader[_:_:FH_frames] != INVALID_HANDLE)
 			CloseHandle(iFileHeader[_:_:FH_frames]);
+		if(GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport))
+			CloseHandle(hAdditionalTeleport);
 	}
 	ClearTrie(g_hLoadedRecords);
+	ClearTrie(g_hLoadedRecordsAdditionalTeleport);
 	ClearTrie(g_hLoadedRecordsCategory);
 	ClearArray(g_hSortedRecordList);
 	ClearArray(g_hSortedCategoryList);
@@ -185,6 +234,11 @@ public OnMapStart()
 	CloseHandle(hDir);
 }
 
+public OnClientPutInServer(client)
+{
+	DHookEntity(g_hTeleport, true, client);
+}
+
 public OnClientDisconnect(client)
 {
 	if(g_hRecording[client] != INVALID_HANDLE)
@@ -211,6 +265,16 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		iFrame[newWeapon] = CSWeapon_NONE;
 		iFrame[playerSubtype] = subtype;
 		iFrame[playerSeed] = seed;
+		
+		// Check for additional Teleports
+		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > g_iCurrentAdditionalTeleportIndex[client])
+		{
+			new iAT[AT_SIZE];
+			GetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client], iAT, AT_SIZE);
+			// Remember, we were teleported this frame!
+			iFrame[additionalFields] |= iAT[_:atFlags];
+			g_iCurrentAdditionalTeleportIndex[client]++;
+		}
 		
 		new iNewWeapon = -1;
 		
@@ -267,7 +331,10 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			return Plugin_Continue;
 		
 		if(g_iBotMimicTick[client] >= g_iBotMimicRecordTickCount[client])
+		{
 			g_iBotMimicTick[client] = 0;
+			g_iCurrentAdditionalTeleportIndex[client] = 0;
+		}
 		
 		new iFrame[FRAME_INFO_SIZE];
 		GetArrayArray(g_hBotMimicsRecord[client], g_iBotMimicTick[client], iFrame, _:FrameInfo);
@@ -282,6 +349,57 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		
 		decl Float:fAcutalVelocity[3];
 		Array_Copy(iFrame[actualVelocity], fAcutalVelocity, 3);
+		
+		// We're supposed to teleport stuff?
+		if(iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
+		{
+			new iAT[AT_SIZE], Handle:hAdditionalTeleport, String:sPath[PLATFORM_MAX_PATH];
+			GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
+			GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport);
+			GetArrayArray(hAdditionalTeleport, g_iCurrentAdditionalTeleportIndex[client], iAT, AT_SIZE);
+			
+			new Float:fOrigin[3], Float:fAngles[3], Float:fVelocity[3];
+			Array_Copy(iAT[_:atOrigin], fOrigin, 3);
+			Array_Copy(iAT[_:atAngles], fAngles, 3);
+			Array_Copy(iAT[_:atVelocity], fVelocity, 3);
+			
+			// THATS STUPID!
+			// Only pass the arguments, if they were set..
+			if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+			{
+				if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				{
+					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+						TeleportEntity(client, fOrigin, fAngles, fVelocity);
+					else
+						TeleportEntity(client, fOrigin, fAngles, NULL_VECTOR);
+				}
+				else
+				{
+					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+						TeleportEntity(client, fOrigin, NULL_VECTOR, fVelocity);
+					else
+						TeleportEntity(client, fOrigin, NULL_VECTOR, NULL_VECTOR);
+				}
+			}
+			else
+			{
+				if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				{
+					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+						TeleportEntity(client, NULL_VECTOR, fAngles, fVelocity);
+					else
+						TeleportEntity(client, NULL_VECTOR, fAngles, NULL_VECTOR);
+				}
+				else
+				{
+					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+						TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, fVelocity);
+				}
+			}
+			
+			g_iCurrentAdditionalTeleportIndex[client]++;
+		}
 		
 		// This is the first tick. Teleport him to the initial position
 		if(g_iBotMimicTick[client] == 0)
@@ -385,6 +503,7 @@ public Action:Timer_DelayedRespawn(Handle:timer, any:userid)
 /**
  * SDKHooks Callbacks
  */
+// Don't allow mimicing players any other weapon than the one recorded!!
 public Action:Hook_WeaponCanSwitchTo(client, weapon)
 {
 	if(g_hBotMimicsRecord[client] == INVALID_HANDLE)
@@ -395,6 +514,44 @@ public Action:Hook_WeaponCanSwitchTo(client, weapon)
 		return Plugin_Stop;
 	}
 	return Plugin_Continue;
+}
+
+/**
+ * DHooks Callbacks
+ */
+public MRESReturn:DHooks_OnTeleport(client, Handle:hParams)
+{
+	// Don't care if he's not recording.
+	if(g_hRecording[client] == INVALID_HANDLE)
+		return MRES_Ignored;
+	
+	new Float:origin[3], Float:angles[3], Float:velocity[3];
+	DHookGetParamVector(hParams, 1, origin);
+	
+	for(new i=0;i<3;i++)
+		angles[i] = DHookGetParamObjectPtrVar(hParams, 2, i*4, ObjectValueType_Float);
+	
+	DHookGetParamVector(hParams, 3, velocity);
+	
+	if(Vector_IsNull(origin, 3) && Vector_IsNull(angles, 3) && Vector_IsNull(velocity, 3))
+		return MRES_Ignored;
+	
+	new iAT[AT_SIZE];
+	Array_Copy(origin, iAT[_:atOrigin], 3);
+	Array_Copy(angles, iAT[_:atAngles], 3);
+	Array_Copy(velocity, iAT[_:atVelocity], 3);
+	
+	// Remember, 
+	if(!Vector_IsNull(iAT[_:atOrigin], 3))
+		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+	if(!Vector_IsNull(iAT[_:atAngles], 3))
+		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ANGLES;
+	if(!Vector_IsNull(iAT[_:atVelocity], 3))
+		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
+	
+	PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+	
+	return MRES_Ignored;
 }
 
 /**
@@ -415,7 +572,14 @@ public StartRecording(Handle:plugin, numParams)
 		return;
 	}
 	
+	if(g_hBotMimicsRecord[client] != INVALID_HANDLE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is currently mimicing another record.");
+		return;
+	}
+	
 	g_hRecording[client] = CreateArray(_:FrameInfo);
+	g_hRecordingAdditionalTeleport[client] = CreateArray(_:AdditionalTeleport);
 	GetClientAbsOrigin(client, g_fInitialPosition[client]);
 	GetClientEyeAngles(client, g_fInitialAngles[client]);
 	g_iRecordedTicks[client] = 0;
@@ -530,6 +694,15 @@ public StopRecording(Handle:plugin, numParams)
 		Array_Copy(g_fInitialAngles[client], iHeader[_:FH_initialAngles], 3);
 		iHeader[_:FH_frames] = g_hRecording[client];
 		
+		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > 0)
+		{
+			SetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, g_hRecordingAdditionalTeleport[client]);
+		}
+		else
+		{
+			CloseHandle(g_hRecordingAdditionalTeleport[client]);
+		}
+		
 		WriteRecordToDisk(sPath, iHeader);
 		
 		SetTrieArray(g_hLoadedRecords, sPath, iHeader, _:FileHeader);
@@ -550,15 +723,18 @@ public StopRecording(Handle:plugin, numParams)
 	else
 	{
 		CloseHandle(g_hRecording[client]);
+		CloseHandle(g_hRecordingAdditionalTeleport[client]);
 	}
 	
 	g_hRecording[client] = INVALID_HANDLE;
+	g_hRecordingAdditionalTeleport[client] = INVALID_HANDLE;
 	g_iRecordedTicks[client] = 0;
 	g_iRecordPreviousWeapon[client] = 0;
 	g_sRecordName[client][0] = 0;
 	g_sRecordPath[client][0] = 0;
 	g_sRecordCategory[client][0] = 0;
 	g_sRecordSubDir[client][0] = 0;
+	g_iCurrentAdditionalTeleportIndex[client] = 0;
 }
 
 public DeleteRecord(Handle:plugin, numParams)
@@ -604,6 +780,10 @@ public DeleteRecord(Handle:plugin, numParams)
 	RemoveFromTrie(g_hLoadedRecords, sPath);
 	RemoveFromTrie(g_hLoadedRecordsCategory, sPath);
 	RemoveFromArray(g_hSortedRecordList, FindStringInArray(g_hSortedRecordList, sPath));
+	new Handle:hAT;
+	if(GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAT))
+		CloseHandle(hAT);
+	RemoveFromTrie(g_hLoadedRecordsAdditionalTeleport, sPath);
 	
 	// Delete the file
 	if(FileExists(sPath))
@@ -926,6 +1106,9 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 	WriteFile(hFile, _:iFileHeader[_:FH_initialPosition], 3, 4);
 	WriteFile(hFile, _:iFileHeader[_:FH_initialAngles], 2, 4);
 	
+	new Handle:hAdditionalTeleport, iATIndex;
+	GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport);
+	
 	new iTickCount = iFileHeader[_:FH_tickCount];
 	WriteFileCell(hFile, iTickCount, 4);
 	
@@ -933,8 +1116,21 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 	for(new i=0;i<iTickCount;i++)
 	{
 		GetArrayArray(iFileHeader[_:FH_frames], i, iFrame, _:FrameInfo);
-		
 		WriteFile(hFile, iFrame, _:FrameInfo, 4);
+		
+		// Handle the optional Teleport call
+		if(hAdditionalTeleport != INVALID_HANDLE && iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
+		{
+			new iAT[AT_SIZE];
+			GetArrayArray(hAdditionalTeleport, iATIndex, iAT, AT_SIZE);
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+				WriteFile(hFile, _:iAT[_:atOrigin], 3, 4);
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				WriteFile(hFile, _:iAT[_:atAngles], 3, 4);
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+				WriteFile(hFile, _:iAT[_:atVelocity], 3, 4);
+			iATIndex++;
+		}
 	}
 	
 	CloseHandle(hFile);
@@ -985,12 +1181,8 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	ReadFileString(hFile, sRecordName, iNameLength+1, iNameLength);
 	sRecordName[iNameLength] = '\0';
 	
-	new Float:fInitialPosition[3], Float:fInitialAngles[3];
-	ReadFile(hFile, _:fInitialPosition, 3, 4);
-	ReadFile(hFile, _:fInitialAngles, 2, 4);
-	
-	Array_Copy(fInitialPosition, headerInfo[_:FH_initialPosition], 3);
-	Array_Copy(fInitialAngles, headerInfo[_:FH_initialAngles], 3);
+	ReadFile(hFile, _:headerInfo[_:FH_initialPosition], 3, 4);
+	ReadFile(hFile, _:headerInfo[_:FH_initialAngles], 2, 4);
 	
 	new iTickCount;
 	ReadFileCell(hFile, iTickCount, 4);
@@ -1023,17 +1215,33 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	}
 	
 	new Handle:hRecordFrames = CreateArray(_:FrameInfo);
+	new Handle:hAdditionalTeleport = CreateArray(AT_SIZE);
 	
 	new iFrame[FRAME_INFO_SIZE];
 	for(new i=0;i<iTickCount;i++)
 	{
 		ReadFile(hFile, iFrame, _:FrameInfo, 4);
 		PushArrayArray(hRecordFrames, iFrame, _:FrameInfo);
+		
+		if(iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
+		{
+			new iAT[AT_SIZE];
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+				ReadFile(hFile, _:iAT[_:atOrigin], 3, 4);
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				ReadFile(hFile, _:iAT[_:atAngles], 3, 4);
+			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+				ReadFile(hFile, _:iAT[_:atVelocity], 3, 4);
+			iAT[_:atFlags] = iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY);
+			PushArrayArray(hAdditionalTeleport, iAT, AT_SIZE);
+		}
 	}
 	
 	headerInfo[_:FH_frames] = hRecordFrames;
 	
 	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
+	if(GetArraySize(hAdditionalTeleport) > 0)
+		SetTrieValue(g_hLoadedRecordsAdditionalTeleport, path, hAdditionalTeleport);
 	
 	CloseHandle(hFile);
 	return BM_NoError;
@@ -1060,6 +1268,12 @@ public SortFuncADT_ByEndTime(index1, index2, Handle:array, Handle:hndl)
 
 BMError:PlayRecord(client, const String:path[])
 {
+	// He's currently recording. Don't start to play some record on him at the same time.
+	if(g_hRecording[client] != INVALID_HANDLE)
+	{
+		return BM_BadClient;
+	}
+	
 	new iFileHeader[FILE_HEADER_LENGTH];
 	GetTrieArray(g_hLoadedRecords, path, iFileHeader, _:FileHeader);
 	
@@ -1077,6 +1291,7 @@ BMError:PlayRecord(client, const String:path[])
 	g_hBotMimicsRecord[client] = iFileHeader[_:FH_frames];
 	g_iBotMimicTick[client] = 0;
 	g_iBotMimicRecordTickCount[client] = iFileHeader[_:FH_tickCount];
+	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	
 	Array_Copy(iFileHeader[_:FH_initialPosition], g_fInitialPosition[client], 3);
 	Array_Copy(iFileHeader[_:FH_initialAngles], g_fInitialAngles[client], 3);
@@ -1138,4 +1353,12 @@ stock GetFileFromFrameHandle(Handle:frames, String:path[], maxlen)
 		strcopy(path, maxlen, sPath);
 		break;
 	}
+}
+
+stock bool:Vector_IsNull(Float:arr[], size)
+{
+	for(new i=0;i<size;i++)
+		if(arr[i] != 0.0)
+			return false;
+	return true;
 }
