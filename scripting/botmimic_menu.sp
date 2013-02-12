@@ -3,6 +3,9 @@
 #include <cstrike>
 #include <botmimic>
 
+#undef REQUIRE_PLUGIN
+#include <adminmenu>
+
 #define PLUGIN_VERSION "1.0"
 
 // This player just stopped recording. Show him the details edit menu when the record was saved.
@@ -15,6 +18,9 @@ new String:g_sNextBotMimicsThis[PLATFORM_MAX_PATH];
 new String:g_sSupposedToMimic[MAXPLAYERS+1][PLATFORM_MAX_PATH];
 new bool:g_bRenameRecord[MAXPLAYERS+1];
 new bool:g_bEnterCategoryName[MAXPLAYERS+1];
+
+// Admin Menu
+new Handle:g_hAdminMenu;
 
 public Plugin:myinfo = 
 {
@@ -34,6 +40,25 @@ public OnPluginStart()
 	AddCommandListener(CmDLstnr_Say, "say_team");
 }
 
+public OnAllPluginsLoaded()
+{
+	if(LibraryExists("adminmenu"))
+	{
+		new Handle:hTopMenu = GetAdminTopMenu();
+		if(hTopMenu != INVALID_HANDLE)
+			OnAdminMenuReady(hTopMenu);
+	}
+}
+
+public OnLibraryRemoved(const String:name[])
+{
+	if(StrEqual(name, "adminmenu"))
+		g_hAdminMenu = INVALID_HANDLE;
+}
+
+/**
+ * Public forwards
+ */
 public bool:OnClientConnect(client, String:rejectmsg[], maxlen)
 {
 	if(IsFakeClient(client) && g_sNextBotMimicsThis[0] != '\0')
@@ -216,7 +241,10 @@ DisplayCategoryMenu(client)
 	
 	new Handle:hMenu = CreateMenu(Menu_SelectCategory);
 	SetMenuTitle(hMenu, "Manage Movement Recording Categories");
-	SetMenuExitButton(hMenu, true);
+	if(g_hAdminMenu)
+		SetMenuExitBackButton(hMenu, true);
+	else
+		SetMenuExitButton(hMenu, true);
 	
 	AddMenuItem(hMenu, "record", "Record new movement");
 	AddMenuItem(hMenu, "createcategory", "Create new category");
@@ -275,6 +303,11 @@ public Menu_SelectCategory(Handle:menu, MenuAction:action, param1, param2)
 			strcopy(g_sPlayerSelectedCategory[param1], sizeof(g_sPlayerSelectedCategory[]), info);
 			DisplayRecordMenu(param1);
 		}
+	}
+	else if (action == MenuAction_Cancel)
+	{
+		if(param2 == MenuCancel_ExitBack)
+			RedisplayAdminMenu(g_hAdminMenu, param1);
 	}
 	else if (action == MenuAction_End)
 	{
@@ -732,5 +765,85 @@ public Menu_HandleRecordProgress(Handle:menu, MenuAction:action, param1, param2)
 	else if (action == MenuAction_End)
 	{
 		CloseHandle(menu);
+	}
+}
+
+/**
+ * Admin Menu Integration
+ */
+public OnAdminMenuReady(Handle:topmenu)
+{
+	// Don't add the category twice!
+	if(g_hAdminMenu == topmenu)
+		return;
+	
+	g_hAdminMenu = topmenu;
+	
+	new TopMenuObject:iBotMimicCategory = AddToTopMenu(topmenu, "Bot Mimic", TopMenuObject_Category, TopMenu_SelectCategory, INVALID_TOPMENUOBJECT, "sm_mimic", ADMFLAG_CONFIG);
+	if(iBotMimicCategory == INVALID_TOPMENUOBJECT)
+		return;
+	
+	AddToTopMenu(topmenu, "Record new movement", TopMenuObject_Item, TopMenu_NewRecord, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
+	AddToTopMenu(topmenu, "List categories", TopMenuObject_Item, TopMenu_ListCategories, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
+}
+
+public TopMenu_SelectCategory(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+{
+	if(action == TopMenuAction_DisplayTitle)
+	{
+		Format(buffer, maxlength, "Bot Mimic");
+	}
+	else if(action == TopMenuAction_DisplayOption)
+	{
+		Format(buffer, maxlength, "Bot Mimic");
+	}
+}
+
+public TopMenu_NewRecord(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+{
+	if(action == TopMenuAction_DisplayOption)
+	{
+		Format(buffer, maxlength, "Record new movement");
+	}
+	else if(action == TopMenuAction_SelectOption)
+	{
+		if(!IsPlayerAlive(param) || GetClientTeam(param) < CS_TEAM_T)
+		{
+			PrintToChat(param, "[BotMimic] You have to be alive to record your movements.");
+			RedisplayAdminMenu(topmenu, param);
+			return;
+		}
+		
+		if(BotMimic_IsPlayerRecording(param))
+		{
+			PrintToChat(param, "[BotMimic] You're already recording!");
+			RedisplayAdminMenu(topmenu, param);
+			return;
+		}
+		
+		if(BotMimic_IsPlayerMimicing(param))
+		{
+			PrintToChat(param, "[BotMimic] You're currently mimicing another record. Stop that first before recording.");
+			RedisplayAdminMenu(topmenu, param);
+			return;
+		}
+		
+		decl String:sTempName[MAX_RECORD_NAME_LENGTH];
+		Format(sTempName, sizeof(sTempName), "%d_%d", GetTime(), param);
+		g_bPlayerRecordingFromMenu[param] = true;
+		BotMimic_StartRecording(param, sTempName, DEFAULT_CATEGORY);
+		DisplayRecordInProgressMenu(param);
+	}
+}
+
+public TopMenu_ListCategories(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+{
+	if(action == TopMenuAction_DisplayOption)
+	{
+		Format(buffer, maxlength, "List categories");
+	}
+	else if(action == TopMenuAction_SelectOption)
+	{
+		DisplayCategoryMenu(param);
 	}
 }
