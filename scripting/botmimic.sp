@@ -525,14 +525,23 @@ public MRESReturn:DHooks_OnTeleport(client, Handle:hParams)
 		return MRES_Ignored;
 	
 	new Float:origin[3], Float:angles[3], Float:velocity[3];
-	DHookGetParamVector(hParams, 1, origin);
+	new bool:bOriginNull = DHookIsNullParam(hParams, 1);
+	new bool:bAnglesNull = DHookIsNullParam(hParams, 2);
+	new bool:bVelocityNull = DHookIsNullParam(hParams, 3);
 	
-	for(new i=0;i<3;i++)
-		angles[i] = DHookGetParamObjectPtrVar(hParams, 2, i*4, ObjectValueType_Float);
+	if(!bOriginNull)
+		DHookGetParamVector(hParams, 1, origin);
 	
-	DHookGetParamVector(hParams, 3, velocity);
+	if(!bAnglesNull)
+	{
+		for(new i=0;i<3;i++)
+			angles[i] = DHookGetParamObjectPtrVar(hParams, 2, i*4, ObjectValueType_Float);
+	}
 	
-	if(Vector_IsNull(origin, 3) && Vector_IsNull(angles, 3) && Vector_IsNull(velocity, 3))
+	if(!bVelocityNull)
+		DHookGetParamVector(hParams, 3, velocity);
+	
+	if(bOriginNull && bAnglesNull && bVelocityNull)
 		return MRES_Ignored;
 	
 	new iAT[AT_SIZE];
@@ -541,11 +550,11 @@ public MRESReturn:DHooks_OnTeleport(client, Handle:hParams)
 	Array_Copy(velocity, iAT[_:atVelocity], 3);
 	
 	// Remember, 
-	if(!Vector_IsNull(iAT[_:atOrigin], 3))
+	if(!bOriginNull)
 		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
-	if(!Vector_IsNull(iAT[_:atAngles], 3))
+	if(!bAnglesNull)
 		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ANGLES;
-	if(!Vector_IsNull(iAT[_:atVelocity], 3))
+	if(!bVelocityNull)
 		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
 	
 	PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
@@ -1352,12 +1361,4 @@ stock GetFileFromFrameHandle(Handle:frames, String:path[], maxlen)
 		strcopy(path, maxlen, sPath);
 		break;
 	}
-}
-
-stock bool:Vector_IsNull(Float:arr[], size)
-{
-	for(new i=0;i<size;i++)
-		if(arr[i] != 0.0)
-			return false;
-	return true;
 }
