@@ -164,6 +164,7 @@ public Action:CmDLstnr_Say(client, const String:command[], argc)
 		DisplayRecordDetailMenu(client);
 		
 		PrintToChat(client, "[BotMimic] Record was renamed to \"%s\".", sText);
+		return Plugin_Handled;
 	}
 	else if(g_bEnterCategoryName[client])
 	{
@@ -183,9 +184,10 @@ public Action:CmDLstnr_Say(client, const String:command[], argc)
 		strcopy(g_sPlayerSelectedCategory[client], sizeof(g_sPlayerSelectedCategory[]), sText);
 		DisplayRecordMenu(client);
 		PrintToChat(client, "[BotMimic] A new category was created named \"%s\".", sText);
+		return Plugin_Handled;
 	}
 	
-	return Plugin_Handled;
+	return Plugin_Continue;
 }
 
 /**
@@ -267,23 +269,30 @@ public Menu_SelectCategory(Handle:menu, MenuAction:action, param1, param2)
 {
 	if (action == MenuAction_Select)
 	{
-		if(BotMimic_IsPlayerRecording(param1))
-		{
-			PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
-			DisplayRecordInProgressMenu(param1);
-			return;
-		}
-		
 		new String:info[PLATFORM_MAX_PATH];
 		GetMenuItem(menu, param2, info, sizeof(info));
 		
 		// He want's to start a new record
 		if(StrEqual(info, "record"))
 		{
+			if(BotMimic_IsPlayerRecording(param1))
+			{
+				PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
+				DisplayRecordInProgressMenu(param1);
+				return;
+			}
+			
 			if(!IsPlayerAlive(param1) || GetClientTeam(param1) < CS_TEAM_T)
 			{
 				PrintToChat(param1, "[BotMimic] You have to be alive to record your movements.");
 				DisplayCategoryMenu(param1);
+				return;
+			}
+			
+			if(BotMimic_IsPlayerMimicing(param1))
+			{
+				PrintToChat(param1, "[BotMimic] You're currently mimicing another record. Stop that first before recording.");
+				RedisplayAdminMenu(g_hAdminMenu, param1);
 				return;
 			}
 			
@@ -372,23 +381,30 @@ public Menu_SelectRecord(Handle:menu, MenuAction:action, param1, param2)
 {
 	if (action == MenuAction_Select)
 	{
-		if(BotMimic_IsPlayerRecording(param1))
-		{
-			PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
-			DisplayRecordInProgressMenu(param1);
-			return;
-		}
-		
 		new String:info[PLATFORM_MAX_PATH];
 		GetMenuItem(menu, param2, info, sizeof(info));
 		
 		// He want's to start a new record
 		if(StrEqual(info, "record"))
 		{
+			if(BotMimic_IsPlayerRecording(param1))
+			{
+				PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
+				DisplayRecordInProgressMenu(param1);
+				return;
+			}
+			
 			if(!IsPlayerAlive(param1) || GetClientTeam(param1) < CS_TEAM_T)
 			{
 				PrintToChat(param1, "[BotMimic] You have to be alive to record your movements.");
 				DisplayRecordMenu(param1);
+				return;
+			}
+			
+			if(BotMimic_IsPlayerMimicing(param1))
+			{
+				PrintToChat(param1, "[BotMimic] You're currently mimicing another record. Stop that first before recording.");
+				RedisplayAdminMenu(g_hAdminMenu, param1);
 				return;
 			}
 			
@@ -456,13 +472,6 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 {
 	if (action == MenuAction_Select)
 	{
-		if(BotMimic_IsPlayerRecording(param1))
-		{
-			PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
-			DisplayRecordInProgressMenu(param1);
-			return;
-		}
-		
 		if(g_sPlayerSelectedRecord[param1][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[param1]))
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -582,13 +591,6 @@ public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
 {
 	if (action == MenuAction_Select)
 	{
-		if(BotMimic_IsPlayerRecording(param1))
-		{
-			PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
-			DisplayRecordInProgressMenu(param1);
-			return;
-		}
-		
 		if(g_sPlayerSelectedRecord[param1][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[param1]))
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -660,13 +662,6 @@ public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
 {
 	if (action == MenuAction_Select)
 	{
-		if(BotMimic_IsPlayerRecording(param1))
-		{
-			PrintToChat(param1, "[BotMimic] You're currently recording! Stop the current take first.");
-			DisplayRecordInProgressMenu(param1);
-			return;
-		}
-		
 		if(g_sPlayerSelectedRecord[param1][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[param1]))
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
