@@ -100,6 +100,14 @@ native BMError:BotMimic_PlayRecordFromFile(client, const String:path[]);
 native BMError:BotMimic_PlayRecordByName(client, const String:name[]);
 
 /**
+ * Have a bot restart the record he's currently playing from the beginning.
+ *
+ * @param client   The client, who should start over with the record he's currently mimicing.
+ * @noreturn
+ */
+native BotMimic_ResetPlayback(client);
+
+/**
  * Stops a player from mimicing a record.
  *
  * @param client	The client who should stop mimicing

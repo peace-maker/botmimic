@@ -38,10 +38,7 @@ public OnPluginStart()
 	
 	AddCommandListener(CmDLstnr_Say, "say");
 	AddCommandListener(CmDLstnr_Say, "say_team");
-}
-
-public OnAllPluginsLoaded()
-{
+	
 	if(LibraryExists("adminmenu"))
 	{
 		new Handle:hTopMenu = GetAdminTopMenu();
@@ -774,7 +771,10 @@ public OnAdminMenuReady(Handle:topmenu)
 	
 	g_hAdminMenu = topmenu;
 	
-	new TopMenuObject:iBotMimicCategory = AddToTopMenu(topmenu, "Bot Mimic", TopMenuObject_Category, TopMenu_SelectCategory, INVALID_TOPMENUOBJECT, "sm_mimic", ADMFLAG_CONFIG);
+	new TopMenuObject:iBotMimicCategory;
+	if((iBotMimicCategory = FindTopMenuCategory(topmenu, "Bot Mimic")) == INVALID_TOPMENUOBJECT)
+		iBotMimicCategory = AddToTopMenu(topmenu, "Bot Mimic", TopMenuObject_Category, TopMenu_SelectCategory, INVALID_TOPMENUOBJECT, "sm_mimic", ADMFLAG_CONFIG);
+	
 	if(iBotMimicCategory == INVALID_TOPMENUOBJECT)
 		return;
 	

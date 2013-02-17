@@ -116,6 +116,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("BotMimic_GetRecordPlayerMimics", GetRecordPlayerMimics);
 	CreateNative("BotMimic_PlayRecordFromFile", PlayRecordFromFile);
 	CreateNative("BotMimic_PlayRecordByName", PlayRecordByName);
+	CreateNative("BotMimic_ResetPlayback", ResetPlayback);
 	CreateNative("BotMimic_StopPlayerMimic", StopPlayerMimic);
 	CreateNative("BotMimic_GetFileHeaders", GetFileHeaders);
 	CreateNative("BotMimic_ChangeRecordName", ChangeRecordName);
@@ -941,6 +942,25 @@ public PlayRecordByName(Handle:plugin, numParams)
 		return _:BM_FileNotFound;
 	
 	return _:PlayRecord(client, sPath);
+}
+
+public ResetPlayback(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return;
+	}
+	
+	if(!BotMimic_IsPlayerMimicing(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not mimicing.");
+		return;
+	}
+	
+	g_iBotMimicTick[client] = 0;
+	g_iCurrentAdditionalTeleportIndex[client] = 0;
 }
 
 public GetFileHeaders(Handle:plugin, numParams)
