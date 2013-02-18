@@ -91,7 +91,7 @@ native BMError:BotMimic_PlayRecordFromFile(client, const String:path[]);
 
 /**
  * Let a client start to mimic a record by providing the record name.
- * There is no guarantee, that record names are unique. It just plays the first match.
+ * Since record names don't have to be unique, this native picks the most recent one.
  *
  * @param client	The client, which should start mimicing.
  * @param name		The name of the record to play.

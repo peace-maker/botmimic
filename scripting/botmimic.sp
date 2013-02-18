@@ -501,7 +501,7 @@ public Action:Timer_DelayedRespawn(Handle:timer, any:userid)
 	if(!client)
 		return Plugin_Stop;
 	
-	if(g_hBotMimicsRecord[client] != INVALID_HANDLE && IsClientInGame(client) && !IsPlayerAlive(client) && GetClientTeam(client) >= CS_TEAM_T)
+	if(g_hBotMimicsRecord[client] != INVALID_HANDLE && IsClientInGame(client) && !IsPlayerAlive(client) && IsFakeClient(client) && GetClientTeam(client) >= CS_TEAM_T)
 		CS_RespawnPlayer(client);
 	
 	return Plugin_Stop;
@@ -946,22 +946,25 @@ public PlayRecordByName(Handle:plugin, numParams)
 	
 	decl String:sPath[PLATFORM_MAX_PATH];
 	new iSize = GetArraySize(g_hSortedRecordList);
-	new iFileHeader[FILE_HEADER_LENGTH], bool:bFound;
+	new iFileHeader[FILE_HEADER_LENGTH], iRecentTimeStamp, String:sRecentPath[PLATFORM_MAX_PATH];
 	for(new i=0;i<iSize;i++)
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
 		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
 		if(StrEqual(sName, iFileHeader[_:FH_recordName]))
 		{
-			bFound = true;
-			break;
+			if(iRecentTimeStamp == 0 || iRecentTimeStamp < iFileHeader[FH_recordEndTime])
+			{
+				iRecentTimeStamp = iFileHeader[FH_recordEndTime];
+				strcopy(sRecentPath, sizeof(sRecentPath), sPath);
+			}
 		}
 	}
 	
-	if(!bFound || !FileExists(sPath))
+	if(!iRecentTimeStamp || !FileExists(sRecentPath))
 		return _:BM_FileNotFound;
 	
-	return _:PlayRecord(client, sPath);
+	return _:PlayRecord(client, sRecentPath);
 }
 
 public ResetPlayback(Handle:plugin, numParams)
