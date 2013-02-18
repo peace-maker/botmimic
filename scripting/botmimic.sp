@@ -84,6 +84,7 @@ new Handle:g_hBotMimicsRecord[MAXPLAYERS+1] = {INVALID_HANDLE,...};
 new g_iBotMimicTick[MAXPLAYERS+1] = {0,...};
 new g_iBotMimicRecordTickCount[MAXPLAYERS+1] = {0,...};
 new g_iBotActiveWeapon[MAXPLAYERS+1] = {-1,...};
+new bool:g_bValidTeleportCall[MAXPLAYERS+1];
 
 new Handle:g_hfwdOnStartRecording;
 new Handle:g_hfwdOnStopRecording;
@@ -157,7 +158,7 @@ public OnPluginStart()
 	HookEvent("player_death", Event_OnPlayerDeath);
 	
 	// Optionally setup a hook on CBaseEntity::Teleport to keep track of sudden place changes
-	new Handle:hGameData = LoadGameConfigFile("sdktools.games/game.cstrike");
+	new Handle:hGameData = LoadGameConfigFile("sdktools.games");
 	if(hGameData == INVALID_HANDLE)
 		return;
 	new iOffset = GameConfGetOffset(hGameData, "Teleport");
@@ -236,7 +237,7 @@ public OnMapStart()
 
 public OnClientPutInServer(client)
 {
-	DHookEntity(g_hTeleport, true, client);
+	DHookEntity(g_hTeleport, false, client);
 }
 
 public OnClientDisconnect(client)
@@ -363,6 +364,9 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			Array_Copy(iAT[_:atAngles], fAngles, 3);
 			Array_Copy(iAT[_:atVelocity], fVelocity, 3);
 			
+			// The next call to Teleport is ok.
+			g_bValidTeleportCall[client] = true;
+			
 			// THATS STUPID!
 			// Only pass the arguments, if they were set..
 			if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
@@ -404,6 +408,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		// This is the first tick. Teleport him to the initial position
 		if(g_iBotMimicTick[client] == 0)
 		{
+			g_bValidTeleportCall[client] = true;
 			TeleportEntity(client, g_fInitialPosition[client], g_fInitialAngles[client], fAcutalVelocity);
 			Client_RemoveAllWeapons(client);
 			
@@ -413,6 +418,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		}
 		else
 		{
+			g_bValidTeleportCall[client] = true;
 			TeleportEntity(client, NULL_VECTOR, angles, fAcutalVelocity);
 		}
 		
@@ -460,6 +466,7 @@ public Event_OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast
 	if(g_hBotMimicsRecord[client] != INVALID_HANDLE)
 	{
 		g_iBotMimicTick[client] = 0;
+		g_iCurrentAdditionalTeleportIndex[client] = 0;
 	}
 }
 
@@ -479,6 +486,7 @@ public Event_OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcast
 	{
 		// Respawn the bot after death!
 		g_iBotMimicTick[client] = 0;
+		g_iCurrentAdditionalTeleportIndex[client] = 0;
 		if(GetClientTeam(client) >= CS_TEAM_T)
 			CreateTimer(1.0, Timer_DelayedRespawn, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 	}
@@ -521,6 +529,16 @@ public Action:Hook_WeaponCanSwitchTo(client, weapon)
  */
 public MRESReturn:DHooks_OnTeleport(client, Handle:hParams)
 {
+	// This one is currently mimicing something.
+	if(g_hBotMimicsRecord[client] != INVALID_HANDLE)
+	{
+		// We didn't allow that teleporting. STOP THAT.
+		if(!g_bValidTeleportCall[client])
+			return MRES_Supercede;
+		g_bValidTeleportCall[client] = false;
+		return MRES_Ignored;
+	}
+	
 	// Don't care if he's not recording.
 	if(g_hRecording[client] == INVALID_HANDLE)
 		return MRES_Ignored;
@@ -874,7 +892,9 @@ public StopPlayerMimic(Handle:plugin, numParams)
 	
 	g_hBotMimicsRecord[client] = INVALID_HANDLE;
 	g_iBotMimicTick[client] = 0;
+	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	g_iBotMimicRecordTickCount[client] = 0;
+	g_bValidTeleportCall[client] = false;
 	
 	new iFileHeader[FILE_HEADER_LENGTH];
 	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
