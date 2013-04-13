@@ -46,6 +46,10 @@ enum AdditionalTeleport {
 	atFlags
 }
 
+// Save the position of clients every 100 ticks
+// This is to avoid bots getting stuck in walls due to slightly lower jumps, if they don't touch the ground.
+#define ORIGIN_SNAPSHOT_INTERVAL 100
+
 #define FILE_HEADER_LENGTH 74
 enum FileHeader {
 	FH_binaryFormatVersion = 0,
@@ -68,6 +72,8 @@ new g_iCurrentAdditionalTeleportIndex[MAXPLAYERS+1];
 new g_iRecordedTicks[MAXPLAYERS+1];
 // What's the last active weapon
 new g_iRecordPreviousWeapon[MAXPLAYERS+1];
+// Count ticks till we save the position again
+new g_iOriginSnapshotInterval[MAXPLAYERS+1];
 // The name of this recording
 new String:g_sRecordName[MAXPLAYERS+1][MAX_RECORD_NAME_LENGTH];
 new String:g_sRecordPath[MAXPLAYERS+1][PLATFORM_MAX_PATH];
@@ -172,6 +178,12 @@ public OnPluginStart()
 	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
 	DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
 	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+	
+	for(new i=1;i<=MaxClients;i++)
+	{
+		if(IsClientInGame(i))
+			OnClientPutInServer(i);
+	}
 }
 
 public ConVar_VersionChanged(Handle:convar, const String:oldValue[], const String:newValue[])
@@ -266,6 +278,18 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		iFrame[newWeapon] = CSWeapon_NONE;
 		iFrame[playerSubtype] = subtype;
 		iFrame[playerSeed] = seed;
+		
+		// Save the current position 
+		if(g_iOriginSnapshotInterval[client] > ORIGIN_SNAPSHOT_INTERVAL)
+		{
+			new Float:origin[3], iAT[AT_SIZE];
+			GetClientAbsOrigin(client, origin);
+			Array_Copy(origin, iAT[_:atOrigin], 3);
+			iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+			PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+		}
+		
+		g_iOriginSnapshotInterval[client]++;
 		
 		// Check for additional Teleports
 		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > g_iCurrentAdditionalTeleportIndex[client])
@@ -610,6 +634,7 @@ public StartRecording(Handle:plugin, numParams)
 	GetClientAbsOrigin(client, g_fInitialPosition[client]);
 	GetClientEyeAngles(client, g_fInitialAngles[client]);
 	g_iRecordedTicks[client] = 0;
+	g_iOriginSnapshotInterval[client] = 0;
 	
 	GetNativeString(2, g_sRecordName[client], MAX_RECORD_NAME_LENGTH);
 	GetNativeString(3, g_sRecordCategory[client], PLATFORM_MAX_PATH);
@@ -762,6 +787,7 @@ public StopRecording(Handle:plugin, numParams)
 	g_sRecordCategory[client][0] = 0;
 	g_sRecordSubDir[client][0] = 0;
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
+	g_iOriginSnapshotInterval[client] = 0;
 }
 
 public DeleteRecord(Handle:plugin, numParams)
@@ -1245,7 +1271,7 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
-	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, fInitialPosition[0], fInitialPosition[1], fInitialPosition[2], fInitialAngles[0], fInitialAngles[1], fInitialAngles[2]);
+	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[_:FH_initialPosition][0], headerInfo[_:FH_initialPosition][1], headerInfo[_:FH_initialPosition][2], headerInfo[_:FH_initialAngles][0], headerInfo[_:FH_initialAngles][1], headerInfo[_:FH_initialAngles][2]);
 	
 	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
 	SetTrieString(g_hLoadedRecordsCategory, path, sCategory);
