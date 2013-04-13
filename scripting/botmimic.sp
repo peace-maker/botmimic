@@ -287,6 +287,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			Array_Copy(origin, iAT[_:atOrigin], 3);
 			iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
 			PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+			g_iOriginSnapshotInterval[client] = 0;
 		}
 		
 		g_iOriginSnapshotInterval[client]++;
