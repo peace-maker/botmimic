@@ -46,9 +46,9 @@ enum AdditionalTeleport {
 	atFlags
 }
 
-// Save the position of clients every 100 ticks
+// Save the position of clients every 10000 ticks
 // This is to avoid bots getting stuck in walls due to slightly lower jumps, if they don't touch the ground.
-#define ORIGIN_SNAPSHOT_INTERVAL 100
+#define ORIGIN_SNAPSHOT_INTERVAL 10000
 
 #define FILE_HEADER_LENGTH 74
 enum FileHeader {
@@ -450,7 +450,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		if(iFrame[newWeapon] != CSWeapon_NONE)
 		{
 			decl String:sAlias[64];
-			CS_WeaponIDToAlias(_:iFrame[newWeapon], sAlias, sizeof(sAlias));
+			CS_WeaponIDToAlias(iFrame[newWeapon], sAlias, sizeof(sAlias));
 			
 			Format(sAlias, sizeof(sAlias), "weapon_%s", sAlias);
 			
