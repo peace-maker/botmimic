@@ -172,17 +172,20 @@ public OnPluginStart()
 	if(iOffset == -1)
 		return;
 	
-	g_hTeleport = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, DHooks_OnTeleport);
-	if(g_hTeleport == INVALID_HANDLE)
-		return;
-	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
-	DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
-	DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
-	
-	for(new i=1;i<=MaxClients;i++)
+	if(LibraryExists("dhooks"))
 	{
-		if(IsClientInGame(i))
-			OnClientPutInServer(i);
+		g_hTeleport = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, DHooks_OnTeleport);
+		if(g_hTeleport == INVALID_HANDLE)
+			return;
+		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+		DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
+		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+		
+		for(new i=1;i<=MaxClients;i++)
+		{
+			if(IsClientInGame(i))
+				OnClientPutInServer(i);
+		}
 	}
 }
 
@@ -249,7 +252,8 @@ public OnMapStart()
 
 public OnClientPutInServer(client)
 {
-	DHookEntity(g_hTeleport, false, client);
+	if(LibraryExists("dhooks"))
+		DHookEntity(g_hTeleport, false, client);
 }
 
 public OnClientDisconnect(client)
