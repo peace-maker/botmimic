@@ -1,3 +1,13 @@
+/**
+ * Bot Mimic - Record your movments and have bots playing it back.
+ * by Peace-Maker
+ * visit http://wcfan.de
+ * 
+ * Changelog:
+ * 2.0   - 22.07.2013: Released rewrite
+ * 2.0.1 - 01.08.2013: Actually made DHooks an optional dependency.
+ */
+
 #pragma semicolon 1
 #include <sourcemod>
 #include <sdktools>
@@ -9,7 +19,7 @@
 #undef REQUIRE_EXTENSIONS
 #include <dhooks>
 
-#define PLUGIN_VERSION "2.0"
+#define PLUGIN_VERSION "2.0.1"
 
 #define BM_MAGIC 0xdeadbeef
 #define BINARY_FORMAT_VERSION 0x01
