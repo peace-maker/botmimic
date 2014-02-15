@@ -173,29 +173,9 @@ public OnPluginStart()
 	HookEvent("player_spawn", Event_OnPlayerSpawn);
 	HookEvent("player_death", Event_OnPlayerDeath);
 	
-	// Optionally setup a hook on CBaseEntity::Teleport to keep track of sudden place changes
-	new Handle:hGameData = LoadGameConfigFile("sdktools.games");
-	if(hGameData == INVALID_HANDLE)
-		return;
-	new iOffset = GameConfGetOffset(hGameData, "Teleport");
-	CloseHandle(hGameData);
-	if(iOffset == -1)
-		return;
-	
 	if(LibraryExists("dhooks"))
 	{
-		g_hTeleport = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, DHooks_OnTeleport);
-		if(g_hTeleport == INVALID_HANDLE)
-			return;
-		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
-		DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
-		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
-		
-		for(new i=1;i<=MaxClients;i++)
-		{
-			if(IsClientInGame(i))
-				OnClientPutInServer(i);
-		}
+		OnLibraryAdded("dhooks");
 	}
 }
 
@@ -207,6 +187,44 @@ public ConVar_VersionChanged(Handle:convar, const String:oldValue[], const Strin
 /**
  * Public forwards
  */
+public OnLibraryAdded(const String:name[])
+{
+	if(StrEqual(name, "dhooks") && g_hTeleport == INVALID_HANDLE)
+	{
+		// Optionally setup a hook on CBaseEntity::Teleport to keep track of sudden place changes
+		new Handle:hGameData = LoadGameConfigFile("sdktools.games");
+		if(hGameData == INVALID_HANDLE)
+			return;
+		new iOffset = GameConfGetOffset(hGameData, "Teleport");
+		CloseHandle(hGameData);
+		if(iOffset == -1)
+			return;
+		
+		g_hTeleport = DHookCreate(iOffset, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity, DHooks_OnTeleport);
+		if(g_hTeleport == INVALID_HANDLE)
+			return;
+		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+		DHookAddParam(g_hTeleport, HookParamType_ObjectPtr);
+		DHookAddParam(g_hTeleport, HookParamType_VectorPtr);
+		if(GetEngineVersion() == Engine_CSGO)
+			DHookAddParam(g_hTeleport, HookParamType_Bool);
+		
+		for(new i=1;i<=MaxClients;i++)
+		{
+			if(IsClientInGame(i))
+				OnClientPutInServer(i);
+		}
+	}
+}
+
+public OnLibraryRemoved(const String:name[])
+{
+	if(StrEqual(name, "dhooks"))
+	{
+		g_hTeleport = INVALID_HANDLE;
+	}
+}
+
 public OnMapStart()
 {
 	// Clear old records for old map
@@ -262,7 +280,7 @@ public OnMapStart()
 
 public OnClientPutInServer(client)
 {
-	if(LibraryExists("dhooks"))
+	if(g_hTeleport != INVALID_HANDLE)
 		DHookEntity(g_hTeleport, false, client);
 }
 
