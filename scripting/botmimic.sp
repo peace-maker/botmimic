@@ -56,9 +56,6 @@ enum AdditionalTeleport {
 	atFlags
 }
 
-// Save the position of clients every 10000 ticks
-// This is to avoid bots getting stuck in walls due to slightly lower jumps, if they don't touch the ground.
-#define ORIGIN_SNAPSHOT_INTERVAL 10000
 
 #define FILE_HEADER_LENGTH 74
 enum FileHeader {
@@ -113,6 +110,8 @@ new Handle:g_hfwdOnPlayerMimicLoops;
 // DHooks
 new Handle:g_hTeleport;
 
+new Handle:g_hCVOriginSnapshotInterval;
+
 public Plugin:myinfo = 
 {
 	name = "Bot Mimic",
@@ -158,6 +157,12 @@ public OnPluginStart()
 		SetConVarString(hVersion, PLUGIN_VERSION);
 		HookConVarChange(hVersion, ConVar_VersionChanged);
 	}
+	
+	// Save the position of clients every 10000 ticks
+	// This is to avoid bots getting stuck in walls due to slightly lower jumps, if they don't touch the ground.
+	g_hCVOriginSnapshotInterval = CreateConVar("sm_botmimic_snapshotinterval", "10000", "Save the position of clients every x ticks. This is to avoid bots getting stuck in walls during a long playback and lots of jumps.", _, true, 0.0);
+	
+	AutoExecConfig();
 	
 	// Maps path to .rec -> record enum
 	g_hLoadedRecords = CreateTrie();
@@ -312,7 +317,8 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		iFrame[playerSeed] = seed;
 		
 		// Save the current position 
-		if(g_iOriginSnapshotInterval[client] > ORIGIN_SNAPSHOT_INTERVAL)
+		new iInterval = GetConVarInt(g_hCVOriginSnapshotInterval);
+		if(iInterval > 0 && g_iOriginSnapshotInterval[client] > iInterval)
 		{
 			new Float:origin[3], iAT[AT_SIZE];
 			GetClientAbsOrigin(client, origin);
