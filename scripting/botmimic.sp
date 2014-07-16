@@ -31,7 +31,6 @@
 #define ADDITIONAL_FIELD_TELEPORTED_ANGLES (1<<1)
 #define ADDITIONAL_FIELD_TELEPORTED_VELOCITY (1<<2)
 
-#define FRAME_INFO_SIZE 14
 enum FrameInfo {
 	playerButtons = 0,
 	playerImpulse,
@@ -44,7 +43,6 @@ enum FrameInfo {
 	additionalFields // see ADDITIONAL_FIELD_* defines
 }
 
-#define AT_SIZE 10
 #define AT_ORIGIN 0
 #define AT_ANGLES 1
 #define AT_VELOCITY 2
@@ -57,7 +55,6 @@ enum AdditionalTeleport {
 }
 
 
-#define FILE_HEADER_LENGTH 76
 enum FileHeader {
 	FH_binaryFormatVersion = 0,
 	FH_recordEndTime,
@@ -247,16 +244,16 @@ public OnMapStart()
 	// Clear old records for old map
 	new iSize = GetArraySize(g_hSortedRecordList);
 	decl String:sPath[PLATFORM_MAX_PATH];
-	new iFileHeader[FILE_HEADER_LENGTH];
+	new iFileHeader[FileHeader];
 	new Handle:hAdditionalTeleport;
 	for(new i=0;i<iSize;i++)
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
-		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
-		if(iFileHeader[_:FH_frames] != INVALID_HANDLE)
-			CloseHandle(iFileHeader[_:FH_frames]);
-		if(iFileHeader[_:FH_bookmarks] != INVALID_HANDLE)
-			CloseHandle(iFileHeader[_:FH_bookmarks]);
+		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
+		if(iFileHeader[FH_frames] != INVALID_HANDLE)
+			CloseHandle(iFileHeader[FH_frames]);
+		if(iFileHeader[FH_bookmarks] != INVALID_HANDLE)
+			CloseHandle(iFileHeader[FH_bookmarks]);
 		if(GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport))
 			CloseHandle(hAdditionalTeleport);
 	}
@@ -317,7 +314,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 	// client is recording his movements
 	if(g_hRecording[client] != INVALID_HANDLE)
 	{
-		new iFrame[FRAME_INFO_SIZE];
+		new iFrame[FrameInfo];
 		iFrame[playerButtons] = buttons;
 		iFrame[playerImpulse] = impulse;
 		
@@ -334,11 +331,11 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		new iInterval = GetConVarInt(g_hCVOriginSnapshotInterval);
 		if(iInterval > 0 && g_iOriginSnapshotInterval[client] > iInterval)
 		{
-			new Float:origin[3], iAT[AT_SIZE];
+			new Float:origin[3], iAT[AdditionalTeleport];
 			GetClientAbsOrigin(client, origin);
-			Array_Copy(origin, iAT[_:atOrigin], 3);
-			iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
-			PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+			Array_Copy(origin, iAT[atOrigin], 3);
+			iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+			PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT[0], _:AdditionalTeleport);
 			g_iOriginSnapshotInterval[client] = 0;
 		}
 		
@@ -347,10 +344,10 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		// Check for additional Teleports
 		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > g_iCurrentAdditionalTeleportIndex[client])
 		{
-			new iAT[AT_SIZE];
-			GetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client], iAT, AT_SIZE);
+			new iAT[AdditionalTeleport];
+			GetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client], iAT[0], _:AdditionalTeleport);
 			// Remember, we were teleported this frame!
-			iFrame[additionalFields] |= iAT[_:atFlags];
+			iFrame[additionalFields] |= iAT[atFlags];
 			g_iCurrentAdditionalTeleportIndex[client]++;
 		}
 		
@@ -396,7 +393,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			}
 		}
 		
-		PushArrayArray(g_hRecording[client], iFrame, _:FrameInfo);
+		PushArrayArray(g_hRecording[client], iFrame[0], _:FrameInfo);
 		
 		g_iRecordedTicks[client]++;
 	}
@@ -414,8 +411,8 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			g_iCurrentAdditionalTeleportIndex[client] = 0;
 		}
 		
-		new iFrame[FRAME_INFO_SIZE];
-		GetArrayArray(g_hBotMimicsRecord[client], g_iBotMimicTick[client], iFrame, _:FrameInfo);
+		new iFrame[FrameInfo];
+		GetArrayArray(g_hBotMimicsRecord[client], g_iBotMimicTick[client], iFrame[0], _:FrameInfo);
 		
 		buttons = iFrame[playerButtons];
 		impulse = iFrame[playerImpulse];
@@ -431,33 +428,33 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		// We're supposed to teleport stuff?
 		if(iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
 		{
-			new iAT[AT_SIZE], Handle:hAdditionalTeleport, String:sPath[PLATFORM_MAX_PATH];
+			new iAT[AdditionalTeleport], Handle:hAdditionalTeleport, String:sPath[PLATFORM_MAX_PATH];
 			GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
 			GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport);
-			GetArrayArray(hAdditionalTeleport, g_iCurrentAdditionalTeleportIndex[client], iAT, AT_SIZE);
+			GetArrayArray(hAdditionalTeleport, g_iCurrentAdditionalTeleportIndex[client], iAT[0], _:AdditionalTeleport);
 			
 			new Float:fOrigin[3], Float:fAngles[3], Float:fVelocity[3];
-			Array_Copy(iAT[_:atOrigin], fOrigin, 3);
-			Array_Copy(iAT[_:atAngles], fAngles, 3);
-			Array_Copy(iAT[_:atVelocity], fVelocity, 3);
+			Array_Copy(iAT[atOrigin], fOrigin, 3);
+			Array_Copy(iAT[atAngles], fAngles, 3);
+			Array_Copy(iAT[atVelocity], fVelocity, 3);
 			
 			// The next call to Teleport is ok.
 			g_bValidTeleportCall[client] = true;
 			
 			// THATS STUPID!
 			// Only pass the arguments, if they were set..
-			if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+			if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
 			{
-				if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
 				{
-					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+					if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
 						TeleportEntity(client, fOrigin, fAngles, fVelocity);
 					else
 						TeleportEntity(client, fOrigin, fAngles, NULL_VECTOR);
 				}
 				else
 				{
-					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+					if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
 						TeleportEntity(client, fOrigin, NULL_VECTOR, fVelocity);
 					else
 						TeleportEntity(client, fOrigin, NULL_VECTOR, NULL_VECTOR);
@@ -465,16 +462,16 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			}
 			else
 			{
-				if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
 				{
-					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+					if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
 						TeleportEntity(client, NULL_VECTOR, fAngles, fVelocity);
 					else
 						TeleportEntity(client, NULL_VECTOR, fAngles, NULL_VECTOR);
 				}
 				else
 				{
-					if(iAT[_:atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+					if(iAT[atFlags] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
 						TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, fVelocity);
 				}
 			}
@@ -640,20 +637,20 @@ public MRESReturn:DHooks_OnTeleport(client, Handle:hParams)
 	if(bOriginNull && bAnglesNull && bVelocityNull)
 		return MRES_Ignored;
 	
-	new iAT[AT_SIZE];
-	Array_Copy(origin, iAT[_:atOrigin], 3);
-	Array_Copy(angles, iAT[_:atAngles], 3);
-	Array_Copy(velocity, iAT[_:atVelocity], 3);
+	new iAT[AdditionalTeleport];
+	Array_Copy(origin, iAT[atOrigin], 3);
+	Array_Copy(angles, iAT[atAngles], 3);
+	Array_Copy(velocity, iAT[atVelocity], 3);
 	
 	// Remember, 
 	if(!bOriginNull)
-		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+		iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
 	if(!bAnglesNull)
-		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ANGLES;
+		iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ANGLES;
 	if(!bVelocityNull)
-		iAT[_:atFlags] |= ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
+		iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
 	
-	PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+	PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT[0], _:AdditionalTeleport);
 	
 	return MRES_Ignored;
 }
@@ -791,17 +788,17 @@ public StopRecording(Handle:plugin, numParams)
 		Format(sPath, sizeof(sPath), "%s/%d.rec", sPath, iEndTime);
 		
 		// Add to our loaded record list
-		new iHeader[FILE_HEADER_LENGTH];
-		iHeader[_:FH_binaryFormatVersion] = BINARY_FORMAT_VERSION;
-		iHeader[_:FH_recordEndTime] = iEndTime;
-		iHeader[_:FH_tickCount] = GetArraySize(g_hRecording[client]);
-		strcopy(iHeader[_:FH_recordName], MAX_RECORD_NAME_LENGTH, g_sRecordName[client]);
-		Array_Copy(g_fInitialPosition[client], iHeader[_:FH_initialPosition], 3);
-		Array_Copy(g_fInitialAngles[client], iHeader[_:FH_initialAngles], 3);
-		iHeader[_:FH_frames] = g_hRecording[client];
+		new iHeader[FileHeader];
+		iHeader[FH_binaryFormatVersion] = BINARY_FORMAT_VERSION;
+		iHeader[FH_recordEndTime] = iEndTime;
+		iHeader[FH_tickCount] = GetArraySize(g_hRecording[client]);
+		strcopy(iHeader[FH_recordName], MAX_RECORD_NAME_LENGTH, g_sRecordName[client]);
+		Array_Copy(g_fInitialPosition[client], iHeader[FH_initialPosition], 3);
+		Array_Copy(g_fInitialAngles[client], iHeader[FH_initialAngles], 3);
+		iHeader[FH_frames] = g_hRecording[client];
 		
-		iHeader[_:FH_bookmarkCount] = GetArraySize(g_hRecordingBookmarks[client]);
-		iHeader[_:FH_bookmarks] = g_hRecordingBookmarks[client];
+		iHeader[FH_bookmarkCount] = GetArraySize(g_hRecordingBookmarks[client]);
+		iHeader[FH_bookmarks] = g_hRecordingBookmarks[client];
 		
 		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > 0)
 		{
@@ -814,7 +811,7 @@ public StopRecording(Handle:plugin, numParams)
 		
 		WriteRecordToDisk(sPath, iHeader);
 		
-		SetTrieArray(g_hLoadedRecords, sPath, iHeader, _:FileHeader);
+		SetTrieArray(g_hLoadedRecords, sPath, iHeader[0], _:FileHeader);
 		SetTrieString(g_hLoadedRecordsCategory, sPath, g_sRecordCategory[client]);
 		PushArrayString(g_hSortedRecordList, sPath);
 		if(FindStringInArray(g_hSortedCategoryList, g_sRecordCategory[client]) == -1)
@@ -882,31 +879,31 @@ public SaveBookmark(Handle:plugin, numParams)
 	}
 	
 	// Save the current state so it can be restored when jumping to that frame.
-	new iAT[AT_SIZE], Float:fBuffer[3];
+	new iAT[AdditionalTeleport], Float:fBuffer[3];
 	GetClientAbsOrigin(client, fBuffer);
-	Array_Copy(fBuffer, iAT[_:atOrigin], 3);
+	Array_Copy(fBuffer, iAT[atOrigin], 3);
 	GetClientEyeAngles(client, fBuffer);
-	Array_Copy(fBuffer, iAT[_:atAngles], 3);
+	Array_Copy(fBuffer, iAT[atAngles], 3);
 	Entity_GetAbsVelocity(client, fBuffer);
-	Array_Copy(fBuffer, iAT[_:atVelocity], 3);
+	Array_Copy(fBuffer, iAT[atVelocity], 3);
 	
-	iAT[_:atFlags] = ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
+	iAT[atFlags] = ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
 	
-	new iFrame[FRAME_INFO_SIZE];
-	GetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame, _:FrameInfo);
+	new iFrame[FrameInfo];
+	GetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame[0], _:FrameInfo);
 	// There already is some Teleport call saved this frame :(
-	if((iFrame[additionalFields] & iAT[_:atFlags]) != 0)
+	if((iFrame[additionalFields] & iAT[atFlags]) != 0)
 	{
 		// Purge it and replace it with this one as we might have more information.
-		SetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client]-1, iAT, AT_SIZE);
+		SetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client]-1, iAT[0], _:AdditionalTeleport);
 	}
 	else
 	{
-		PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+		PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT[0], _:AdditionalTeleport);
 		g_iCurrentAdditionalTeleportIndex[client]++;
 	}
 	// Remember, we were teleported this frame!
-	iFrame[additionalFields] |= iAT[_:atFlags];
+	iFrame[additionalFields] |= iAT[atFlags];
 	
 	new iWeapon = Client_GetActiveWeapon(client);
 	if(iWeapon != INVALID_ENT_REFERENCE && iFrame[newWeapon] == CSWeapon_NONE && IsValidEntity(iWeapon))
@@ -921,7 +918,7 @@ public SaveBookmark(Handle:plugin, numParams)
 		iFrame[newWeapon] = weaponId;
 	}
 	
-	SetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame, _:FrameInfo);
+	SetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame[0], _:FrameInfo);
 	
 	// Save the bookmark
 	iBookmark[BKM_frame] = g_iRecordedTicks[client]-1;
@@ -938,8 +935,8 @@ public DeleteRecord(Handle:plugin, numParams)
 	GetNativeString(1, sPath, iLen+1);
 	
 	// Do we have this record loaded?
-	new iFileHeader[FILE_HEADER_LENGTH];
-	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	new iFileHeader[FileHeader];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader))
 	{
 		if(!FileExists(sPath))
 			return -1;
@@ -951,12 +948,12 @@ public DeleteRecord(Handle:plugin, numParams)
 	}
 	
 	new iCount;
-	if(iFileHeader[_:FH_frames] != INVALID_HANDLE)
+	if(iFileHeader[FH_frames] != INVALID_HANDLE)
 	{
 		for(new i=1;i<=MaxClients;i++)
 		{
 			// Stop the bots from mimicing this one
-			if(g_hBotMimicsRecord[i] == iFileHeader[_:FH_frames])
+			if(g_hBotMimicsRecord[i] == iFileHeader[FH_frames])
 			{
 				BotMimic_StopPlayerMimic(i);
 				iCount++;
@@ -964,12 +961,12 @@ public DeleteRecord(Handle:plugin, numParams)
 		}
 		
 		// Discard the frames
-		CloseHandle(iFileHeader[_:FH_frames]);
+		CloseHandle(iFileHeader[FH_frames]);
 	}
 	
-	if(iFileHeader[_:FH_bookmarks] != INVALID_HANDLE)
+	if(iFileHeader[FH_bookmarks] != INVALID_HANDLE)
 	{
-		CloseHandle(iFileHeader[_:FH_bookmarks]);
+		CloseHandle(iFileHeader[FH_bookmarks]);
 	}
 	
 	new String:sCategory[64];
@@ -990,7 +987,7 @@ public DeleteRecord(Handle:plugin, numParams)
 	}
 	
 	Call_StartForward(g_hfwdOnRecordDeleted);
-	Call_PushString(iFileHeader[_:FH_recordName]);
+	Call_PushString(iFileHeader[FH_recordName]);
 	Call_PushString(sCategory);
 	Call_PushString(sPath);
 	Call_Finish();
@@ -1065,14 +1062,14 @@ public GoToBookmark(Handle:plugin, numParams)
 	new String:sPath[PLATFORM_MAX_PATH];
 	GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
+	new iFileHeader[FileHeader];
+	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
 	
 	// Get the bookmark with this name
 	new iBookmark[Bookmarks], bool:bBookmarkFound;
-	for(new i=0;i<iFileHeader[_:FH_bookmarkCount];i++)
+	for(new i=0;i<iFileHeader[FH_bookmarkCount];i++)
 	{
-		GetArrayArray(iFileHeader[_:FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		GetArrayArray(iFileHeader[FH_bookmarks], i, iBookmark[0], _:Bookmarks);
 		if(StrEqual(iBookmark[BKM_name], sBookmarkName, false))
 		{
 			bBookmarkFound = true;
@@ -1114,8 +1111,8 @@ public StopPlayerMimic(Handle:plugin, numParams)
 	g_iBotMimicRecordTickCount[client] = 0;
 	g_bValidTeleportCall[client] = false;
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
+	new iFileHeader[FileHeader];
+	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
 	
 	SDKUnhook(client, SDKHook_WeaponCanSwitchTo, Hook_WeaponCanSwitchTo);
 	
@@ -1124,7 +1121,7 @@ public StopPlayerMimic(Handle:plugin, numParams)
 	
 	Call_StartForward(g_hfwdOnPlayerStopsMimicing);
 	Call_PushCell(client);
-	Call_PushString(iFileHeader[_:FH_recordName]);
+	Call_PushString(iFileHeader[FH_recordName]);
 	Call_PushString(sCategory);
 	Call_PushString(sPath);
 	Call_Finish();
@@ -1164,12 +1161,12 @@ public PlayRecordByName(Handle:plugin, numParams)
 	
 	decl String:sPath[PLATFORM_MAX_PATH];
 	new iSize = GetArraySize(g_hSortedRecordList);
-	new iFileHeader[FILE_HEADER_LENGTH], iRecentTimeStamp, String:sRecentPath[PLATFORM_MAX_PATH];
+	new iFileHeader[FileHeader], iRecentTimeStamp, String:sRecentPath[PLATFORM_MAX_PATH];
 	for(new i=0;i<iSize;i++)
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
-		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
-		if(StrEqual(sName, iFileHeader[_:FH_recordName]))
+		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
+		if(StrEqual(sName, iFileHeader[FH_recordName]))
 		{
 			if(iRecentTimeStamp == 0 || iRecentTimeStamp < iFileHeader[FH_recordEndTime])
 			{
@@ -1216,8 +1213,8 @@ public GetFileHeaders(Handle:plugin, numParams)
 		return _:BM_FileNotFound;
 	}
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	new iFileHeader[FileHeader];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader))
 	{
 		decl String:sCategory[64];
 		if(!GetTrieString(g_hLoadedRecordsCategory, sPath, sCategory, sizeof(sCategory)))
@@ -1227,15 +1224,14 @@ public GetFileHeaders(Handle:plugin, numParams)
 			return _:error;
 	}
 	
-	new iLengthOfBMFileHeader = _:BMFileHeader;
-	new iExposedFileHeader[iLengthOfBMFileHeader];
-	iExposedFileHeader[_:BMFH_binaryFormatVersion] = iFileHeader[_:FH_binaryFormatVersion];
-	iExposedFileHeader[_:BMFH_recordEndTime] = iFileHeader[_:FH_recordEndTime];
-	strcopy(iExposedFileHeader[_:BMFH_recordName], MAX_RECORD_NAME_LENGTH, iFileHeader[_:FH_recordName]);
-	iExposedFileHeader[_:BMFH_tickCount] = iFileHeader[_:FH_tickCount];
-	Array_Copy(iFileHeader[_:BMFH_initialPosition], iExposedFileHeader[_:FH_initialPosition], 3);
-	Array_Copy(iFileHeader[_:BMFH_initialAngles], iExposedFileHeader[_:FH_initialAngles], 3);
-	iExposedFileHeader[_:BMFH_bookmarkCount] = iFileHeader[_:FH_bookmarkCount];
+	new iExposedFileHeader[BMFileHeader];
+	iExposedFileHeader[BMFH_binaryFormatVersion] = iFileHeader[FH_binaryFormatVersion];
+	iExposedFileHeader[BMFH_recordEndTime] = iFileHeader[FH_recordEndTime];
+	strcopy(iExposedFileHeader[BMFH_recordName], MAX_RECORD_NAME_LENGTH, iFileHeader[FH_recordName]);
+	iExposedFileHeader[BMFH_tickCount] = iFileHeader[FH_tickCount];
+	Array_Copy(iFileHeader[BMFH_initialPosition], iExposedFileHeader[FH_initialPosition], 3);
+	Array_Copy(iFileHeader[BMFH_initialAngles], iExposedFileHeader[FH_initialAngles], 3);
+	iExposedFileHeader[BMFH_bookmarkCount] = iFileHeader[FH_bookmarkCount];
 	
 	
 	new iSize = _:BMFileHeader;
@@ -1244,7 +1240,7 @@ public GetFileHeaders(Handle:plugin, numParams)
 	if(iSize > _:BMFileHeader)
 		iSize = _:BMFileHeader;
 	
-	SetNativeArray(2, iExposedFileHeader, iSize);
+	SetNativeArray(2, iExposedFileHeader[0], iSize);
 	return _:BM_NoError;
 }
 
@@ -1264,8 +1260,8 @@ public ChangeRecordName(Handle:plugin, numParams)
 	if(!GetTrieString(g_hLoadedRecordsCategory, sPath, sCategory, sizeof(sCategory)))
 		strcopy(sCategory, sizeof(sCategory), DEFAULT_CATEGORY);
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	new iFileHeader[FileHeader];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader))
 	{
 		new BMError:error = LoadRecordFromFile(sPath, sCategory, iFileHeader, false, false);
 		if(error != BM_NoError)
@@ -1273,15 +1269,15 @@ public ChangeRecordName(Handle:plugin, numParams)
 	}
 	
 	// Load the whole record first or we'd lose the frames!
-	if(iFileHeader[_:FH_frames] == INVALID_HANDLE)
+	if(iFileHeader[FH_frames] == INVALID_HANDLE)
 		LoadRecordFromFile(sPath, sCategory, iFileHeader, false, true);
 	
 	GetNativeStringLength(2, iLen);
 	decl String:sName[iLen+1];
 	GetNativeString(2, sName, iLen+1);
 	
-	strcopy(iFileHeader[_:FH_recordName], MAX_RECORD_NAME_LENGTH, sName);
-	SetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
+	strcopy(iFileHeader[FH_recordName], MAX_RECORD_NAME_LENGTH, sName);
+	SetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
 	
 	WriteRecordToDisk(sPath, iFileHeader);
 	
@@ -1325,8 +1321,8 @@ public GetRecordBookmarks(Handle:plugin, numParams)
 		return _:BM_FileNotFound;
 	}
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	new iFileHeader[FileHeader];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader))
 	{
 		decl String:sCategory[64];
 		if(!GetTrieString(g_hLoadedRecordsCategory, sPath, sCategory, sizeof(sCategory)))
@@ -1338,9 +1334,9 @@ public GetRecordBookmarks(Handle:plugin, numParams)
 	
 	new Handle:hBookmarks = CreateArray(ByteCountToCells(MAX_BOOKMARK_NAME_LENGTH));
 	new iBookmark[Bookmarks];
-	for(new i=0;i<iFileHeader[_:FH_bookmarkCount];i++)
+	for(new i=0;i<iFileHeader[FH_bookmarkCount];i++)
 	{
-		GetArrayArray(iFileHeader[_:FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		GetArrayArray(iFileHeader[FH_bookmarks], i, iBookmark[0], _:Bookmarks);
 		PushArrayString(hBookmarks, iBookmark[BKM_name]);
 	}
 	
@@ -1373,7 +1369,7 @@ ParseRecordsInDirectory(const String:sPath[], const String:sCategory[], bool:sub
 	if(hDir == INVALID_HANDLE)
 		return;
 	
-	new String:sFile[64], FileType:fileType, String:sFilePath[PLATFORM_MAX_PATH], iFileHeader[FILE_HEADER_LENGTH];
+	new String:sFile[64], FileType:fileType, String:sFilePath[PLATFORM_MAX_PATH], iFileHeader[FileHeader];
 	while(ReadDirEntry(hDir, sFile, sizeof(sFile), fileType))
 	{
 		switch(fileType)
@@ -1400,7 +1396,7 @@ ParseRecordsInDirectory(const String:sPath[], const String:sCategory[], bool:sub
 	CloseHandle(hDir);
 }
 
-WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
+WriteRecordToDisk(const String:sPath[], iFileHeader[FileHeader])
 {
 	new Handle:hFile = OpenFile(sPath, "wb");
 	if(hFile == INVALID_HANDLE)
@@ -1410,25 +1406,25 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 	}
 	
 	WriteFileCell(hFile, BM_MAGIC, 4);
-	WriteFileCell(hFile, iFileHeader[_:FH_binaryFormatVersion], 1);
-	WriteFileCell(hFile, iFileHeader[_:FH_recordEndTime], 4);
-	WriteFileCell(hFile, strlen(iFileHeader[_:FH_recordName]), 1);
-	WriteFileString(hFile, iFileHeader[_:FH_recordName], false);
+	WriteFileCell(hFile, iFileHeader[FH_binaryFormatVersion], 1);
+	WriteFileCell(hFile, iFileHeader[FH_recordEndTime], 4);
+	WriteFileCell(hFile, strlen(iFileHeader[FH_recordName]), 1);
+	WriteFileString(hFile, iFileHeader[FH_recordName], false);
 	
-	WriteFile(hFile, _:iFileHeader[_:FH_initialPosition], 3, 4);
-	WriteFile(hFile, _:iFileHeader[_:FH_initialAngles], 2, 4);
+	WriteFile(hFile, _:iFileHeader[FH_initialPosition], 3, 4);
+	WriteFile(hFile, _:iFileHeader[FH_initialAngles], 2, 4);
 	
 	new Handle:hAdditionalTeleport, iATIndex;
 	GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport);
 	
-	new iTickCount = iFileHeader[_:FH_tickCount];
+	new iTickCount = iFileHeader[FH_tickCount];
 	WriteFileCell(hFile, iTickCount, 4);
 	
-	new iBookmarkCount = iFileHeader[_:FH_bookmarkCount];
+	new iBookmarkCount = iFileHeader[FH_bookmarkCount];
 	WriteFileCell(hFile, iBookmarkCount, 4);
 	
 	// Write all bookmarks
-	new Handle:hBookmarks = iFileHeader[_:FH_bookmarks];
+	new Handle:hBookmarks = iFileHeader[FH_bookmarks];
 	
 	new iBookmark[Bookmarks];
 	for(new i=0;i<iBookmarkCount;i++)
@@ -1440,23 +1436,23 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 		WriteFileString(hFile, iBookmark[BKM_name], true);
 	}
 	
-	new iFrame[FRAME_INFO_SIZE];
+	new iFrame[FrameInfo];
 	for(new i=0;i<iTickCount;i++)
 	{
-		GetArrayArray(iFileHeader[_:FH_frames], i, iFrame, _:FrameInfo);
-		WriteFile(hFile, iFrame, _:FrameInfo, 4);
+		GetArrayArray(iFileHeader[FH_frames], i, iFrame[0], _:FrameInfo);
+		WriteFile(hFile, iFrame[0], _:FrameInfo, 4);
 		
 		// Handle the optional Teleport call
-		if(hAdditionalTeleport != INVALID_HANDLE && iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
+		if(hAdditionalTeleport != INVALID_HANDLE && iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
 		{
-			new iAT[AT_SIZE];
-			GetArrayArray(hAdditionalTeleport, iATIndex, iAT, AT_SIZE);
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
-				WriteFile(hFile, _:iAT[_:atOrigin], 3, 4);
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
-				WriteFile(hFile, _:iAT[_:atAngles], 3, 4);
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
-				WriteFile(hFile, _:iAT[_:atVelocity], 3, 4);
+			new iAT[AdditionalTeleport];
+			GetArrayArray(hAdditionalTeleport, iATIndex, iAT[0], _:AdditionalTeleport);
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+				WriteFile(hFile, _:iAT[atOrigin], 3, 4);
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				WriteFile(hFile, _:iAT[atAngles], 3, 4);
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+				WriteFile(hFile, _:iAT[atVelocity], 3, 4);
 			iATIndex++;
 		}
 	}
@@ -1464,14 +1460,14 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 	CloseHandle(hFile);
 }
 
-BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], headerInfo[FILE_HEADER_LENGTH], bool:onlyHeader, bool:forceReload)
+BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], headerInfo[FileHeader], bool:onlyHeader, bool:forceReload)
 {
 	if(!FileExists(path))
 		return BM_FileNotFound;
 	
 	// Already loaded that file?
 	new bool:bAlreadyLoaded = false;
-	if(GetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader))
+	if(GetTrieArray(g_hLoadedRecords, path, headerInfo[0], _:FileHeader))
 	{
 		// Header already loaded.
 		if(onlyHeader && !forceReload)
@@ -1494,7 +1490,7 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	
 	new iBinaryFormatVersion;
 	ReadFileCell(hFile, iBinaryFormatVersion, 1);
-	headerInfo[_:FH_binaryFormatVersion] = iBinaryFormatVersion;
+	headerInfo[FH_binaryFormatVersion] = iBinaryFormatVersion;
 	
 	if(iBinaryFormatVersion > BINARY_FORMAT_VERSION)
 	{
@@ -1509,8 +1505,8 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	ReadFileString(hFile, sRecordName, iNameLength+1, iNameLength);
 	sRecordName[iNameLength] = '\0';
 	
-	ReadFile(hFile, _:headerInfo[_:FH_initialPosition], 3, 4);
-	ReadFile(hFile, _:headerInfo[_:FH_initialAngles], 2, 4);
+	ReadFile(hFile, _:headerInfo[FH_initialPosition], 3, 4);
+	ReadFile(hFile, _:headerInfo[FH_initialAngles], 2, 4);
 	
 	new iTickCount;
 	ReadFileCell(hFile, iTickCount, 4);
@@ -1520,17 +1516,17 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	{
 		ReadFileCell(hFile, iBookmarkCount, 4);
 	}
-	headerInfo[_:FH_bookmarkCount] = iBookmarkCount;
+	headerInfo[FH_bookmarkCount] = iBookmarkCount;
 	
-	headerInfo[_:FH_recordEndTime] = iRecordTime;
-	strcopy(headerInfo[_:FH_recordName], MAX_RECORD_NAME_LENGTH, sRecordName);
-	headerInfo[_:FH_tickCount] = iTickCount;
+	headerInfo[FH_recordEndTime] = iRecordTime;
+	strcopy(headerInfo[FH_recordName], MAX_RECORD_NAME_LENGTH, sRecordName);
+	headerInfo[FH_tickCount] = iTickCount;
 
-	headerInfo[_:FH_frames] = INVALID_HANDLE;
+	headerInfo[FH_frames] = INVALID_HANDLE;
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
-	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[_:FH_initialPosition][0], headerInfo[_:FH_initialPosition][1], headerInfo[_:FH_initialPosition][2], headerInfo[_:FH_initialAngles][0], headerInfo[_:FH_initialAngles][1], headerInfo[_:FH_initialAngles][2]);
+	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[FH_initialPosition][0], headerInfo[FH_initialPosition][1], headerInfo[FH_initialPosition][2], headerInfo[FH_initialAngles][0], headerInfo[FH_initialAngles][1], headerInfo[FH_initialAngles][2]);
 	
 	// Read in all bookmarks
 	new Handle:hBookmarks = CreateArray(_:Bookmarks);
@@ -1544,9 +1540,9 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 		PushArrayArray(hBookmarks, iBookmark[0], _:Bookmarks);
 	}
 	
-	headerInfo[_:FH_bookmarks] = hBookmarks;
+	headerInfo[FH_bookmarks] = hBookmarks;
 	
-	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
+	SetTrieArray(g_hLoadedRecords, path, headerInfo[0], _:FileHeader);
 	SetTrieString(g_hLoadedRecordsCategory, path, sCategory);
 	
 	if(!bAlreadyLoaded)
@@ -1566,31 +1562,31 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	
 	// Read in all the saved frames
 	new Handle:hRecordFrames = CreateArray(_:FrameInfo);
-	new Handle:hAdditionalTeleport = CreateArray(AT_SIZE);
+	new Handle:hAdditionalTeleport = CreateArray(_:AdditionalTeleport);
 	
-	new iFrame[FRAME_INFO_SIZE];
+	new iFrame[FrameInfo];
 	for(new i=0;i<iTickCount;i++)
 	{
-		ReadFile(hFile, iFrame, _:FrameInfo, 4);
-		PushArrayArray(hRecordFrames, iFrame, _:FrameInfo);
+		ReadFile(hFile, iFrame[0], _:FrameInfo, 4);
+		PushArrayArray(hRecordFrames, iFrame[0], _:FrameInfo);
 		
-		if(iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
+		if(iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
 		{
-			new iAT[AT_SIZE];
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
-				ReadFile(hFile, _:iAT[_:atOrigin], 3, 4);
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
-				ReadFile(hFile, _:iAT[_:atAngles], 3, 4);
-			if(iFrame[_:additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
-				ReadFile(hFile, _:iAT[_:atVelocity], 3, 4);
-			iAT[_:atFlags] = iFrame[_:additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY);
-			PushArrayArray(hAdditionalTeleport, iAT, AT_SIZE);
+			new iAT[AdditionalTeleport];
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ORIGIN)
+				ReadFile(hFile, _:iAT[atOrigin], 3, 4);
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_ANGLES)
+				ReadFile(hFile, _:iAT[atAngles], 3, 4);
+			if(iFrame[additionalFields] & ADDITIONAL_FIELD_TELEPORTED_VELOCITY)
+				ReadFile(hFile, _:iAT[atVelocity], 3, 4);
+			iAT[atFlags] = iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY);
+			PushArrayArray(hAdditionalTeleport, iAT[0], _:AdditionalTeleport);
 		}
 	}
 	
-	headerInfo[_:FH_frames] = hRecordFrames;
+	headerInfo[FH_frames] = hRecordFrames;
 	
-	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
+	SetTrieArray(g_hLoadedRecords, path, headerInfo[0], _:FileHeader);
 	if(GetArraySize(hAdditionalTeleport) > 0)
 		SetTrieValue(g_hLoadedRecordsAdditionalTeleport, path, hAdditionalTeleport);
 	
@@ -1610,11 +1606,11 @@ public SortFuncADT_ByEndTime(index1, index2, Handle:array, Handle:hndl)
 	GetArrayString(array, index1, path1, sizeof(path1));
 	GetArrayString(array, index2, path2, sizeof(path2));
 	
-	new header1[FILE_HEADER_LENGTH], header2[FILE_HEADER_LENGTH];
-	GetTrieArray(g_hLoadedRecords, path1, header1, _:FileHeader);
-	GetTrieArray(g_hLoadedRecords, path2, header2, _:FileHeader);
+	new header1[FileHeader], header2[FileHeader];
+	GetTrieArray(g_hLoadedRecords, path1, header1[0], _:FileHeader);
+	GetTrieArray(g_hLoadedRecords, path2, header2[0], _:FileHeader);
 	
-	return header1[_:FH_recordEndTime] - header2[_:FH_recordEndTime];
+	return header1[FH_recordEndTime] - header2[FH_recordEndTime];
 }
 
 BMError:PlayRecord(client, const String:path[])
@@ -1625,11 +1621,11 @@ BMError:PlayRecord(client, const String:path[])
 		return BM_BadClient;
 	}
 	
-	new iFileHeader[FILE_HEADER_LENGTH];
-	GetTrieArray(g_hLoadedRecords, path, iFileHeader, _:FileHeader);
+	new iFileHeader[FileHeader];
+	GetTrieArray(g_hLoadedRecords, path, iFileHeader[0], _:FileHeader);
 	
 	// That record isn't fully loaded yet. Do that now.
-	if(iFileHeader[_:FH_frames] == INVALID_HANDLE)
+	if(iFileHeader[FH_frames] == INVALID_HANDLE)
 	{
 		decl String:sCategory[64];
 		if(!GetTrieString(g_hLoadedRecordsCategory, path, sCategory, sizeof(sCategory)))
@@ -1639,13 +1635,13 @@ BMError:PlayRecord(client, const String:path[])
 			return error;
 	}
 	
-	g_hBotMimicsRecord[client] = iFileHeader[_:FH_frames];
+	g_hBotMimicsRecord[client] = iFileHeader[FH_frames];
 	g_iBotMimicTick[client] = 0;
-	g_iBotMimicRecordTickCount[client] = iFileHeader[_:FH_tickCount];
+	g_iBotMimicRecordTickCount[client] = iFileHeader[FH_tickCount];
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	
-	Array_Copy(iFileHeader[_:FH_initialPosition], g_fInitialPosition[client], 3);
-	Array_Copy(iFileHeader[_:FH_initialAngles], g_fInitialAngles[client], 3);
+	Array_Copy(iFileHeader[FH_initialPosition], g_fInitialPosition[client], 3);
+	Array_Copy(iFileHeader[FH_initialAngles], g_fInitialAngles[client], 3);
 	
 	SDKHook(client, SDKHook_WeaponCanSwitchTo, Hook_WeaponCanSwitchTo);
 	
@@ -1659,7 +1655,7 @@ BMError:PlayRecord(client, const String:path[])
 	new Action:result;
 	Call_StartForward(g_hfwdOnPlayerStartsMimicing);
 	Call_PushCell(client);
-	Call_PushString(iFileHeader[_:FH_recordName]);
+	Call_PushString(iFileHeader[FH_recordName]);
 	Call_PushString(sCategory);
 	Call_PushString(path);
 	Call_Finish(result);
@@ -1693,12 +1689,12 @@ stock bool:CheckCreateDirectory(const String:sPath[], mode)
 stock GetFileFromFrameHandle(Handle:frames, String:path[], maxlen)
 {
 	new iSize = GetArraySize(g_hSortedRecordList);
-	decl String:sPath[PLATFORM_MAX_PATH], iFileHeader[FILE_HEADER_LENGTH];
+	decl String:sPath[PLATFORM_MAX_PATH], iFileHeader[FileHeader];
 	for(new i=0;i<iSize;i++)
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
-		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
-		if(iFileHeader[_:FH_frames] != frames)
+		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
+		if(iFileHeader[FH_frames] != frames)
 			continue;
 		
 		strcopy(path, maxlen, sPath);
