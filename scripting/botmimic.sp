@@ -22,7 +22,7 @@
 #define PLUGIN_VERSION "2.0.1"
 
 #define BM_MAGIC 0xdeadbeef
-#define BINARY_FORMAT_VERSION 0x01
+#define BINARY_FORMAT_VERSION 0x02
 
 #define DEFAULT_RECORD_FOLDER "data/botmimic/"
 
@@ -57,16 +57,24 @@ enum AdditionalTeleport {
 }
 
 
-#define FILE_HEADER_LENGTH 74
+#define FILE_HEADER_LENGTH 76
 enum FileHeader {
 	FH_binaryFormatVersion = 0,
 	FH_recordEndTime,
 	String:FH_recordName[MAX_RECORD_NAME_LENGTH],
 	FH_tickCount,
+	FH_bookmarkCount,
 	Float:FH_initialPosition[3],
 	Float:FH_initialAngles[3],
+	Handle:FH_bookmarks,
 	Handle:FH_frames
 }
+
+enum Bookmarks {
+	BKM_frame,
+	BKM_additionalTeleportTick,
+	String:BKM_name[MAX_BOOKMARK_NAME_LENGTH]
+};
 
 // Where did he start recording. The bot is teleported to this position on replay.
 new Float:g_fInitialPosition[MAXPLAYERS+1][3];
@@ -74,6 +82,7 @@ new Float:g_fInitialAngles[MAXPLAYERS+1][3];
 // Array of frames
 new Handle:g_hRecording[MAXPLAYERS+1];
 new Handle:g_hRecordingAdditionalTeleport[MAXPLAYERS+1];
+new Handle:g_hRecordingBookmarks[MAXPLAYERS+1];
 new g_iCurrentAdditionalTeleportIndex[MAXPLAYERS+1];
 // How many calls to OnPlayerRunCmd were recorded?
 new g_iRecordedTicks[MAXPLAYERS+1];
@@ -126,6 +135,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	RegPluginLibrary("botmimic");
 	CreateNative("BotMimic_StartRecording", StartRecording);
 	CreateNative("BotMimic_StopRecording", StopRecording);
+	CreateNative("BotMimic_SaveBookmark", SaveBookmark);
 	CreateNative("BotMimic_DeleteRecord", DeleteRecord);
 	CreateNative("BotMimic_IsPlayerRecording", IsPlayerRecording);
 	CreateNative("BotMimic_IsPlayerMimicing", IsPlayerMimicing);
@@ -133,12 +143,14 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("BotMimic_PlayRecordFromFile", PlayRecordFromFile);
 	CreateNative("BotMimic_PlayRecordByName", PlayRecordByName);
 	CreateNative("BotMimic_ResetPlayback", ResetPlayback);
+	CreateNative("BotMimic_GoToBookmark", GoToBookmark);
 	CreateNative("BotMimic_StopPlayerMimic", StopPlayerMimic);
 	CreateNative("BotMimic_GetFileHeaders", GetFileHeaders);
 	CreateNative("BotMimic_ChangeRecordName", ChangeRecordName);
 	CreateNative("BotMimic_GetLoadedRecordCategoryList", GetLoadedRecordCategoryList);
 	CreateNative("BotMimic_GetLoadedRecordList", GetLoadedRecordList);
 	CreateNative("BotMimic_GetFileCategory", GetFileCategory);
+	CreateNative("BotMimic_GetRecordBookmarks", GetRecordBookmarks);
 	
 	g_hfwdOnStartRecording = CreateGlobalForward("BotMimic_OnStartRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String);
 	g_hfwdOnStopRecording = CreateGlobalForward("BotMimic_OnStopRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String, Param_CellByRef);
@@ -241,8 +253,10 @@ public OnMapStart()
 	{
 		GetArrayString(g_hSortedRecordList, i, sPath, sizeof(sPath));
 		GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
-		if(iFileHeader[_:_:FH_frames] != INVALID_HANDLE)
-			CloseHandle(iFileHeader[_:_:FH_frames]);
+		if(iFileHeader[_:FH_frames] != INVALID_HANDLE)
+			CloseHandle(iFileHeader[_:FH_frames]);
+		if(iFileHeader[_:FH_bookmarks] != INVALID_HANDLE)
+			CloseHandle(iFileHeader[_:FH_bookmarks]);
 		if(GetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, hAdditionalTeleport))
 			CloseHandle(hAdditionalTeleport);
 	}
@@ -411,8 +425,8 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		seed = iFrame[playerSeed];
 		weapon = 0;
 		
-		decl Float:fAcutalVelocity[3];
-		Array_Copy(iFrame[actualVelocity], fAcutalVelocity, 3);
+		decl Float:fActualVelocity[3];
+		Array_Copy(iFrame[actualVelocity], fActualVelocity, 3);
 		
 		// We're supposed to teleport stuff?
 		if(iFrame[additionalFields] & (ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY))
@@ -472,7 +486,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		if(g_iBotMimicTick[client] == 0)
 		{
 			g_bValidTeleportCall[client] = true;
-			TeleportEntity(client, g_fInitialPosition[client], g_fInitialAngles[client], fAcutalVelocity);
+			TeleportEntity(client, g_fInitialPosition[client], g_fInitialAngles[client], fActualVelocity);
 			Client_RemoveAllWeapons(client);
 			
 			Call_StartForward(g_hfwdOnPlayerMimicLoops);
@@ -482,7 +496,7 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		else
 		{
 			g_bValidTeleportCall[client] = true;
-			TeleportEntity(client, NULL_VECTOR, angles, fAcutalVelocity);
+			TeleportEntity(client, NULL_VECTOR, angles, fActualVelocity);
 		}
 		
 		if(iFrame[newWeapon] != CSWeapon_NONE)
@@ -670,6 +684,7 @@ public StartRecording(Handle:plugin, numParams)
 	
 	g_hRecording[client] = CreateArray(_:FrameInfo);
 	g_hRecordingAdditionalTeleport[client] = CreateArray(_:AdditionalTeleport);
+	g_hRecordingBookmarks[client] = CreateArray(_:Bookmarks);
 	GetClientAbsOrigin(client, g_fInitialPosition[client]);
 	GetClientEyeAngles(client, g_fInitialAngles[client]);
 	g_iRecordedTicks[client] = 0;
@@ -785,6 +800,9 @@ public StopRecording(Handle:plugin, numParams)
 		Array_Copy(g_fInitialAngles[client], iHeader[_:FH_initialAngles], 3);
 		iHeader[_:FH_frames] = g_hRecording[client];
 		
+		iHeader[_:FH_bookmarkCount] = GetArraySize(g_hRecordingBookmarks[client]);
+		iHeader[_:FH_bookmarks] = g_hRecordingBookmarks[client];
+		
 		if(GetArraySize(g_hRecordingAdditionalTeleport[client]) > 0)
 		{
 			SetTrieValue(g_hLoadedRecordsAdditionalTeleport, sPath, g_hRecordingAdditionalTeleport[client]);
@@ -815,10 +833,12 @@ public StopRecording(Handle:plugin, numParams)
 	{
 		CloseHandle(g_hRecording[client]);
 		CloseHandle(g_hRecordingAdditionalTeleport[client]);
+		CloseHandle(g_hRecordingBookmarks[client]);
 	}
 	
 	g_hRecording[client] = INVALID_HANDLE;
 	g_hRecordingAdditionalTeleport[client] = INVALID_HANDLE;
+	g_hRecordingBookmarks[client] = INVALID_HANDLE;
 	g_iRecordedTicks[client] = 0;
 	g_iRecordPreviousWeapon[client] = 0;
 	g_sRecordName[client][0] = 0;
@@ -827,6 +847,87 @@ public StopRecording(Handle:plugin, numParams)
 	g_sRecordSubDir[client][0] = 0;
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	g_iOriginSnapshotInterval[client] = 0;
+}
+
+public SaveBookmark(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return;
+	}
+	
+	// Not recording..
+	if(g_hRecording[client] == INVALID_HANDLE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not recording.");
+		return;
+	}
+	
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
+	GetNativeString(2, sBookmarkName, sizeof(sBookmarkName));
+	
+	// First check if there already is a bookmark with this name
+	new iBookmark[Bookmarks];
+	new iSize = GetArraySize(g_hRecordingBookmarks[client]);
+	for(new i=0;i<iSize;i++)
+	{
+		GetArrayArray(g_hRecordingBookmarks[client], i, iBookmark[0], _:Bookmarks);
+		if(StrEqual(iBookmark[BKM_name], sBookmarkName, false))
+		{
+			ThrowNativeError(SP_ERROR_NATIVE, "There already is a bookmark named \"%s\".", sBookmarkName);
+			return;
+		}
+	}
+	
+	// Save the current state so it can be restored when jumping to that frame.
+	new iAT[AT_SIZE], Float:fBuffer[3];
+	GetClientAbsOrigin(client, fBuffer);
+	Array_Copy(fBuffer, iAT[_:atOrigin], 3);
+	GetClientEyeAngles(client, fBuffer);
+	Array_Copy(fBuffer, iAT[_:atAngles], 3);
+	Entity_GetAbsVelocity(client, fBuffer);
+	Array_Copy(fBuffer, iAT[_:atVelocity], 3);
+	
+	iAT[_:atFlags] = ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
+	
+	new iFrame[FRAME_INFO_SIZE];
+	GetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame, _:FrameInfo);
+	// There already is some Teleport call saved this frame :(
+	if((iFrame[additionalFields] & iAT[_:atFlags]) != 0)
+	{
+		// Purge it and replace it with this one as we might have more information.
+		SetArrayArray(g_hRecordingAdditionalTeleport[client], g_iCurrentAdditionalTeleportIndex[client]-1, iAT, AT_SIZE);
+	}
+	else
+	{
+		PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+		g_iCurrentAdditionalTeleportIndex[client]++;
+	}
+	// Remember, we were teleported this frame!
+	iFrame[additionalFields] |= iAT[_:atFlags];
+	
+	new iWeapon = Client_GetActiveWeapon(client);
+	if(iWeapon != INVALID_ENT_REFERENCE && iFrame[newWeapon] == CSWeapon_NONE && IsValidEntity(iWeapon))
+	{
+		new String:sClassName[64];
+		GetEntityClassname(iWeapon, sClassName, sizeof(sClassName));
+		ReplaceString(sClassName, sizeof(sClassName), "weapon_", "", false);
+		
+		new String:sWeaponAlias[64];
+		CS_GetTranslatedWeaponAlias(sClassName, sWeaponAlias, sizeof(sWeaponAlias));
+		new CSWeaponID:weaponId = CS_AliasToWeaponID(sWeaponAlias);
+		iFrame[newWeapon] = weaponId;
+	}
+	
+	SetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame, _:FrameInfo);
+	
+	// Save the bookmark
+	iBookmark[BKM_frame] = g_iRecordedTicks[client]-1;
+	iBookmark[BKM_additionalTeleportTick] = g_iCurrentAdditionalTeleportIndex[client]-1;
+	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH, sBookmarkName);
+	PushArrayArray(g_hRecordingBookmarks[client], iBookmark[0], _:Bookmarks);
 }
 
 public DeleteRecord(Handle:plugin, numParams)
@@ -864,6 +965,11 @@ public DeleteRecord(Handle:plugin, numParams)
 		
 		// Discard the frames
 		CloseHandle(iFileHeader[_:FH_frames]);
+	}
+	
+	if(iFileHeader[_:FH_bookmarks] != INVALID_HANDLE)
+	{
+		CloseHandle(iFileHeader[_:FH_bookmarks]);
 	}
 	
 	new String:sCategory[64];
@@ -935,6 +1041,53 @@ public GetRecordPlayerMimics(Handle:plugin, numParams)
 	new String:sPath[iLen];
 	GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, iLen);
 	SetNativeString(2, sPath, iLen);
+}
+
+public GoToBookmark(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return;
+	}
+	
+	if(!BotMimic_IsPlayerMimicing(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not mimicing.");
+		return;
+	}
+	
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
+	GetNativeString(2, sBookmarkName, sizeof(sBookmarkName));
+	
+	// Get the file header
+	new String:sPath[PLATFORM_MAX_PATH];
+	GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
+	
+	new iFileHeader[FILE_HEADER_LENGTH];
+	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader);
+	
+	// Get the bookmark with this name
+	new iBookmark[Bookmarks], bool:bBookmarkFound;
+	for(new i=0;i<iFileHeader[_:FH_bookmarkCount];i++)
+	{
+		GetArrayArray(iFileHeader[_:FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		if(StrEqual(iBookmark[BKM_name], sBookmarkName, false))
+		{
+			bBookmarkFound = true;
+			break;
+		}
+	}
+	
+	if(!bBookmarkFound)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "There is no bookmark named \"%s\" in this record.", sBookmarkName);
+		return;
+	}
+	
+	g_iBotMimicTick[client] = iBookmark[BKM_frame];
+	g_iCurrentAdditionalTeleportIndex[client] = iBookmark[BKM_additionalTeleportTick];
 }
 
 public StopPlayerMimic(Handle:plugin, numParams)
@@ -1082,8 +1235,16 @@ public GetFileHeaders(Handle:plugin, numParams)
 	iExposedFileHeader[_:BMFH_tickCount] = iFileHeader[_:FH_tickCount];
 	Array_Copy(iFileHeader[_:BMFH_initialPosition], iExposedFileHeader[_:FH_initialPosition], 3);
 	Array_Copy(iFileHeader[_:BMFH_initialAngles], iExposedFileHeader[_:FH_initialAngles], 3);
+	iExposedFileHeader[_:BMFH_bookmarkCount] = iFileHeader[_:FH_bookmarkCount];
 	
-	SetNativeArray(2, iExposedFileHeader, _:BMFileHeader);
+	
+	new iSize = _:BMFileHeader;
+	if(numParams > 2)
+		iSize = GetNativeCell(3);
+	if(iSize > _:BMFileHeader)
+		iSize = _:BMFileHeader;
+	
+	SetNativeArray(2, iExposedFileHeader, iSize);
 	return _:BM_NoError;
 }
 
@@ -1150,6 +1311,41 @@ public GetFileCategory(Handle:plugin, numParams)
 	
 	SetNativeString(2, sCategory, iLen);
 	return _:bFound;
+}
+
+public GetRecordBookmarks(Handle:plugin, numParams)
+{
+	new iLen;
+	GetNativeStringLength(1, iLen);
+	decl String:sPath[iLen+1];
+	GetNativeString(1, sPath, iLen+1);
+	
+	if(!FileExists(sPath))
+	{
+		return _:BM_FileNotFound;
+	}
+	
+	new iFileHeader[FILE_HEADER_LENGTH];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	{
+		decl String:sCategory[64];
+		if(!GetTrieString(g_hLoadedRecordsCategory, sPath, sCategory, sizeof(sCategory)))
+			strcopy(sCategory, sizeof(sCategory), DEFAULT_CATEGORY);
+		new BMError:error = LoadRecordFromFile(sPath, sCategory, iFileHeader, true, false);
+		if(error != BM_NoError)
+			return _:error;
+	}
+	
+	new Handle:hBookmarks = CreateArray(ByteCountToCells(MAX_BOOKMARK_NAME_LENGTH));
+	new iBookmark[Bookmarks];
+	for(new i=0;i<iFileHeader[_:FH_bookmarkCount];i++)
+	{
+		GetArrayArray(iFileHeader[_:FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		PushArrayString(hBookmarks, iBookmark[BKM_name]);
+	}
+	
+	SetNativeCellRef(2, hBookmarks);
+	return _:BM_NoError;
 }
 
 
@@ -1228,6 +1424,22 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 	new iTickCount = iFileHeader[_:FH_tickCount];
 	WriteFileCell(hFile, iTickCount, 4);
 	
+	new iBookmarkCount = iFileHeader[_:FH_bookmarkCount];
+	WriteFileCell(hFile, iBookmarkCount, 4);
+	
+	// Write all bookmarks
+	new Handle:hBookmarks = iFileHeader[_:FH_bookmarks];
+	
+	new iBookmark[Bookmarks];
+	for(new i=0;i<iBookmarkCount;i++)
+	{
+		GetArrayArray(hBookmarks, i, iBookmark[0], _:Bookmarks);
+		
+		WriteFileCell(hFile, iBookmark[BKM_frame], 4);
+		WriteFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
+		WriteFileString(hFile, iBookmark[BKM_name], true);
+	}
+	
 	new iFrame[FRAME_INFO_SIZE];
 	for(new i=0;i<iTickCount;i++)
 	{
@@ -1303,14 +1515,36 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	new iTickCount;
 	ReadFileCell(hFile, iTickCount, 4);
 	
+	new iBookmarkCount;
+	if(iBinaryFormatVersion >= 0x02)
+	{
+		ReadFileCell(hFile, iBookmarkCount, 4);
+	}
+	headerInfo[_:FH_bookmarkCount] = iBookmarkCount;
+	
 	headerInfo[_:FH_recordEndTime] = iRecordTime;
 	strcopy(headerInfo[_:FH_recordName], MAX_RECORD_NAME_LENGTH, sRecordName);
 	headerInfo[_:FH_tickCount] = iTickCount;
+
 	headerInfo[_:FH_frames] = INVALID_HANDLE;
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
 	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[_:FH_initialPosition][0], headerInfo[_:FH_initialPosition][1], headerInfo[_:FH_initialPosition][2], headerInfo[_:FH_initialAngles][0], headerInfo[_:FH_initialAngles][1], headerInfo[_:FH_initialAngles][2]);
+	
+	// Read in all bookmarks
+	new Handle:hBookmarks = CreateArray(_:Bookmarks);
+	
+	new iBookmark[Bookmarks];
+	for(new i=0;i<iBookmarkCount;i++)
+	{
+		ReadFileCell(hFile, iBookmark[BKM_frame], 4);
+		ReadFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
+		ReadFileString(hFile, iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH);
+		PushArrayArray(hBookmarks, iBookmark[0], _:Bookmarks);
+	}
+	
+	headerInfo[_:FH_bookmarks] = hBookmarks;
 	
 	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
 	SetTrieString(g_hLoadedRecordsCategory, path, sCategory);
@@ -1330,6 +1564,7 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 		return BM_NoError;
 	}
 	
+	// Read in all the saved frames
 	new Handle:hRecordFrames = CreateArray(_:FrameInfo);
 	new Handle:hAdditionalTeleport = CreateArray(AT_SIZE);
 	

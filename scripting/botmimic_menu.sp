@@ -14,6 +14,7 @@ new bool:g_bPlayerStoppedRecording[MAXPLAYERS+1];
 
 new String:g_sPlayerSelectedCategory[MAXPLAYERS+1][PLATFORM_MAX_PATH];
 new String:g_sPlayerSelectedRecord[MAXPLAYERS+1][PLATFORM_MAX_PATH];
+new String:g_sPlayerSelectedBookmark[MAXPLAYERS+1][MAX_BOOKMARK_NAME_LENGTH];
 new String:g_sNextBotMimicsThis[PLATFORM_MAX_PATH];
 new String:g_sSupposedToMimic[MAXPLAYERS+1][PLATFORM_MAX_PATH];
 new bool:g_bRenameRecord[MAXPLAYERS+1];
@@ -35,9 +36,12 @@ public OnPluginStart()
 {
 	RegAdminCmd("sm_mimic", Cmd_Record, ADMFLAG_CONFIG, "Opens the bot mimic menu", "botmimic");
 	RegAdminCmd("sm_stoprecord", Cmd_StopRecord, ADMFLAG_CONFIG, "Stops your current record", "botmimic");
+	RegAdminCmd("sm_savebookmark", Cmd_SaveBookmark, ADMFLAG_CONFIG, "Saves a bookmark with the given name in the record the target records. sm_savebookmark <name|steamid|#userid> <bookmark name>", "botmimic");
 	
-	AddCommandListener(CmDLstnr_Say, "say");
-	AddCommandListener(CmDLstnr_Say, "say_team");
+	AddCommandListener(CmdLstnr_Say, "say");
+	AddCommandListener(CmdLstnr_Say, "say_team");
+	
+	LoadTranslations("common.phrases");
 	
 	if(LibraryExists("adminmenu"))
 	{
@@ -77,8 +81,9 @@ public OnClientPutInServer(client)
 
 public OnClientDisconnect(client)
 {
+	g_sPlayerSelectedCategory[client][0] = '\0';
 	g_sPlayerSelectedRecord[client][0] = '\0';
-	g_sPlayerSelectedRecord[client][0] = '\0';
+	g_sPlayerSelectedBookmark[client][0] = '\0';
 	g_sSupposedToMimic[client][0] = '\0';
 	g_bRenameRecord[client] = false;
 	g_bEnterCategoryName[client] = false;
@@ -122,7 +127,45 @@ public Action:Cmd_StopRecord(client, args)
 	return Plugin_Handled;
 }
 
-public Action:CmDLstnr_Say(client, const String:command[], argc)
+public Action:Cmd_SaveBookmark(client, args)
+{
+	if(args < 2)
+	{
+		ReplyToCommand(client, "[BotMimic] Saves a bookmark with the given name in the record the target records. sm_savebookmark <name|steamid|#userid> <bookmark name>");
+		return Plugin_Handled;
+	}
+	
+	decl String:sTarget[64];
+	GetCmdArg(1, sTarget, sizeof(sTarget));
+	new iTarget = FindTarget(client, sTarget, false, false);
+	if(iTarget == -1)
+		return Plugin_Handled;
+	
+	if(!BotMimic_IsPlayerRecording(iTarget))
+	{
+		ReplyToCommand(client, "[BotMimic] Target %N is not recording.", iTarget);
+		return Plugin_Handled;
+	}
+	
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
+	GetCmdArg(2, sBookmarkName, sizeof(sBookmarkName));
+	TrimString(sBookmarkName);
+	StripQuotes(sBookmarkName);
+	
+	if(strlen(sBookmarkName) == 0)
+	{
+		ReplyToCommand(client, "[BotMimic] You have to give a name for the bookmark.");
+		return Plugin_Handled;
+	}
+	
+	BotMimic_SaveBookmark(iTarget, sBookmarkName);
+	
+	ReplyToCommand(client, "[BotMimic] Saved bookmark \"%s\" in %N's record.", sBookmarkName, iTarget);
+	
+	return Plugin_Handled;
+}
+
+public Action:CmdLstnr_Say(client, const String:command[], argc)
 {
 	decl String:sText[256];
 	GetCmdArgString(sText, sizeof(sText));
@@ -453,6 +496,7 @@ DisplayRecordDetailMenu(client)
 	AddMenuItem(hMenu, "playselect", "Select a bot to mimic");
 	AddMenuItem(hMenu, "playadd", "Add a bot to mimic");
 	AddMenuItem(hMenu, "stop", "Stop any bots mimicing this record");
+	AddMenuItem(hMenu, "bookmarks", "Display bookmarks", iFileHeader[BMFH_bookmarkCount]>0?ITEMDRAW_DEFAULT:ITEMDRAW_DISABLED);
 	AddMenuItem(hMenu, "rename", "Rename this record");
 	AddMenuItem(hMenu, "delete", "Delete");
 	
@@ -556,6 +600,10 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 			
 			PrintToChat(param1, "[BotMimic] Stopped %d bots from mimicing record \"%s\".", iCount, iFileHeader[BMFH_recordName]);
 			DisplayRecordDetailMenu(param1);
+		}
+		else if(StrEqual(info, "bookmarks"))
+		{
+			DisplayBookmarkListMenu(param1);
 		}
 		else if(StrEqual(info, "rename"))
 		{
@@ -698,6 +746,184 @@ public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
 			DisplayRecordDetailMenu(param1);
 		else
 			g_sPlayerSelectedRecord[param1][0] = '\0';
+	}
+	else if (action == MenuAction_End)
+	{
+		CloseHandle(menu);
+	}
+}
+
+DisplayBookmarkListMenu(client)
+{
+	g_sPlayerSelectedBookmark[client][0]= '\0';
+	
+	new iFileHeader[BMFileHeader];
+	if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[client], iFileHeader) != BM_NoError)
+	{
+		g_sPlayerSelectedRecord[client][0] = '\0';
+		DisplayRecordMenu(client);
+		return;
+	}
+	
+	new Handle:hMenu = CreateMenu(Menu_HandleBookmarkList);
+	SetMenuTitle(hMenu, "Bookmarks for record \"%s\"", iFileHeader[BMFH_recordName]);
+	SetMenuExitBackButton(hMenu, true);
+	
+	new Handle:hBookmarks;
+	if(BotMimic_GetRecordBookmarks(g_sPlayerSelectedRecord[client], hBookmarks) != BM_NoError)
+	{
+		g_sPlayerSelectedRecord[client][0] = '\0';
+		DisplayRecordMenu(client);
+		return;
+	}
+	
+	new iSize = GetArraySize(hBookmarks);
+	decl String:sBuffer[MAX_BOOKMARK_NAME_LENGTH];
+	for(new i=0;i<iSize;i++)
+	{
+		GetArrayString(hBookmarks, i, sBuffer, sizeof(sBuffer));
+		AddMenuItem(hMenu, sBuffer, sBuffer);
+	}
+	CloseHandle(hBookmarks);
+	
+	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+}
+
+public Menu_HandleBookmarkList(Handle:menu, MenuAction:action, param1, param2)
+{
+	if (action == MenuAction_Select)
+	{
+		if(g_sPlayerSelectedRecord[param1][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[param1]))
+		{
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+			DisplayRecordMenu(param1);
+			return;
+		}
+		
+		new iFileHeader[BMFileHeader];
+		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
+		{
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+			DisplayRecordMenu(param1);
+			return;
+		}
+		
+		new String:info[MAX_BOOKMARK_NAME_LENGTH];
+		GetMenuItem(menu, param2, info, sizeof(info));
+		strcopy(g_sPlayerSelectedBookmark[param1], MAX_BOOKMARK_NAME_LENGTH, info);
+		
+		DisplayBookmarkMimicingPlayers(param1);
+	}
+	else if (action == MenuAction_Cancel)
+	{
+		if(param2 == MenuCancel_ExitBack)
+			DisplayRecordDetailMenu(param1);
+		else
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+	}
+	else if (action == MenuAction_End)
+	{
+		CloseHandle(menu);
+	}
+}
+
+DisplayBookmarkMimicingPlayers(client)
+{
+	new Handle:hMenu = CreateMenu(Menu_HandleBookmarkMimicingPlayer);
+	SetMenuTitle(hMenu, "Select which player who currently plays the record should jump to bookmark \"%s\":", g_sPlayerSelectedBookmark[client]);
+	SetMenuExitBackButton(hMenu, true);
+	
+	new String:sBuffer[PLATFORM_MAX_PATH], String:sUserId[16];
+	for(new i=1;i<=MaxClients;i++)
+	{
+		if(!IsClientInGame(i) || !BotMimic_IsPlayerMimicing(i))
+			continue;
+		
+		BotMimic_GetRecordPlayerMimics(i, sBuffer, sizeof(sBuffer));
+		if(!StrEqual(sBuffer, g_sPlayerSelectedRecord[client], false))
+			continue;
+		
+		Format(sBuffer, sizeof(sBuffer), "%N (#%d)", i, GetClientUserId(i));
+		IntToString(GetClientUserId(i), sUserId, sizeof(sUserId));
+		AddMenuItem(hMenu, sUserId, sBuffer);
+	}
+	
+	if(GetMenuItemCount(hMenu) == 0)
+		AddMenuItem(hMenu, "", "No players currently mimicing this record.", ITEMDRAW_DISABLED);
+	
+	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+}
+
+public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1, param2)
+{
+	if (action == MenuAction_Select)
+	{
+		if(g_sPlayerSelectedRecord[param1][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[param1]))
+		{
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+			g_sPlayerSelectedBookmark[param1][0] = '\0';
+			DisplayRecordMenu(param1);
+			return;
+		}
+		
+		if(g_sPlayerSelectedBookmark[param1][0] == '\0')
+		{
+			DisplayBookmarkListMenu(param1);
+			return;
+		}
+		
+		new iFileHeader[BMFileHeader];
+		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
+		{
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+			g_sPlayerSelectedBookmark[param1][0] = '\0';
+			DisplayRecordMenu(param1);
+			return;
+		}
+		
+		new String:info[MAX_BOOKMARK_NAME_LENGTH];
+		GetMenuItem(menu, param2, info, sizeof(info));
+		
+		new userid = StringToInt(info);
+		new iTarget = GetClientOfUserId(userid);
+		
+		if(!iTarget || !IsClientInGame(iTarget) || GetClientTeam(iTarget) < CS_TEAM_T)
+		{
+			PrintToChat(param1, "[BotMimic] The bot you selected can't be found anymore.");
+			DisplayBookmarkMimicingPlayers(param1);
+			return;
+		}
+		
+		if(!BotMimic_IsPlayerMimicing(iTarget))
+		{
+			PrintToChat(param1, "[BotMimic] %N isn't mimicing anything anymore.", iTarget);
+			DisplayBookmarkMimicingPlayers(param1);
+			return;
+		}
+		else
+		{
+			decl String:sRecordPath[PLATFORM_MAX_PATH];
+			BotMimic_GetRecordPlayerMimics(iTarget, sRecordPath, sizeof(sRecordPath));
+			if(!StrEqual(sRecordPath, g_sPlayerSelectedRecord[param1], false))
+			{
+				PrintToChat(param1, "[BotMimic] %N isn't mimicing the selected record anymore.", iTarget);
+				DisplayBookmarkMimicingPlayers(param1);
+				return;
+			}
+		}
+		
+		BotMimic_GoToBookmark(iTarget, g_sPlayerSelectedBookmark[param1]);
+		DisplayBookmarkMimicingPlayers(param1);
+	}
+	else if (action == MenuAction_Cancel)
+	{
+		if(param2 == MenuCancel_ExitBack)
+			DisplayBookmarkListMenu(param1);
+		else
+		{
+			g_sPlayerSelectedRecord[param1][0] = '\0';
+			g_sPlayerSelectedBookmark[param1][0] = '\0';
+		}
 	}
 	else if (action == MenuAction_End)
 	{

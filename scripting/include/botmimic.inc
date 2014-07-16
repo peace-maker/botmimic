@@ -4,6 +4,7 @@
 #define _botmimic_included
 
 #define MAX_RECORD_NAME_LENGTH 64
+#define MAX_BOOKMARK_NAME_LENGTH 64
 #define DEFAULT_CATEGORY "default"
 
 enum BMError {
@@ -20,7 +21,8 @@ enum BMFileHeader {
 	String:BMFH_recordName[MAX_RECORD_NAME_LENGTH],
 	BMFH_tickCount,
 	Float:BMFH_initialPosition[3],
-	Float:BMFH_initialAngles[3]
+	Float:BMFH_initialAngles[3],
+	BMFH_bookmarkCount
 }
 
 /**
@@ -45,6 +47,17 @@ native BotMimic_StartRecording(client, const String:name[], const String:categor
  * @noreturn
  */
 native BotMimic_StopRecording(client, bool:save=true);
+
+/**
+ * Save the current frame with the given name as bookmark.
+ * You can skip to this point when playing back the record using BotMimic_GoToBookmark.
+ *
+ * @param client	The client which is recording
+ * @param name		The name of this bookmark
+ * @noreturn
+ * @error	Client not recording
+ */
+native BotMimic_SaveBookmark(client, const String:name[]);
 
 /**
  * Deletes a record and does some checks, that the file is really a record.
@@ -108,6 +121,16 @@ native BMError:BotMimic_PlayRecordByName(client, const String:name[]);
 native BotMimic_ResetPlayback(client);
 
 /**
+ * Jump the the frame where this bookmark was set in the record.
+ * @see BotMimic_SaveBookmark
+ *
+ * @param client	The client, which is mimicing some record
+ * @param name		The name of the bookmark saved during recording using BotMimic_SaveBookmark
+ * @noreturn
+ */
+native BotMimic_GoToBookmark(client, const String:name[]);
+
+/**
  * Stops a player from mimicing a record.
  *
  * @param client	The client who should stop mimicing
@@ -140,7 +163,7 @@ native Handle:BotMimic_GetLoadedRecordCategoryList();
  * @param iFileHeader	An array to store the file header in.
  * @return			BM_NoError if all went smooth, see BMError definition.
  */
-native BMError:BotMimic_GetFileHeaders(const String:path[], iFileHeader[BMFileHeader]);
+native BMError:BotMimic_GetFileHeaders(const String:path[], iFileHeader[BMFileHeader], size=_:BMFileHeader);
 
 /**
  * Get the category of a record.
@@ -160,6 +183,16 @@ native bool:BotMimic_GetFileCategory(const String:path[], String:category[], max
  * @return			BM_NoError if all went smooth, see BMError definition.
  */
 native BMError:BotMimic_ChangeRecordName(const String:path[], String:name[]);
+
+/**
+ * Get a list of all bookmarks stored in this record as an adt_array.
+ * You have to close the returned Handle using CloseHandle.
+ *
+ * @param path		The path to the .rec record file.
+ * @param bookmarks	The handle where the bookmark array will be stored in.
+ * @return			BM_NoError if all went smooth, see BMError definition.
+ */
+native BMError:BotMimic_GetRecordBookmarks(const String:path[], &Handle:bookmarks);
 
 /**
  * Called when a player starts recording.
