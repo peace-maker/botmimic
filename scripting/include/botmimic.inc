@@ -47,6 +47,16 @@ native BotMimic_StartRecording(client, const String:name[], const String:categor
 native BotMimic_StopRecording(client, bool:save=true);
 
 /**
+ * Save the current frame with the given name as bookmark.
+ * You can skip to this point when playing back the record using BotMimic_GoToBookmark.
+ *
+ * @param client	The client which is recording
+ * @param name		The name of this bookmark
+ * @noreturn
+ * @error	Client not recording
+native BotMimic_SaveBookmark(client, const String:name[]);
+
+/**
  * Deletes a record and does some checks, that the file is really a record.
  * 
  * @param path		The Path to the .rec recording file to delete.
@@ -106,6 +116,16 @@ native BMError:BotMimic_PlayRecordByName(client, const String:name[]);
  * @noreturn
  */
 native BotMimic_ResetPlayback(client);
+
+/**
+ * Jump the the frame where this bookmark was set in the record.
+ * @see BotMimic_SaveBookmark
+ *
+ * @param client	The client, which is mimicing some record
+ * @param name		The name of the bookmark saved during recording using BotMimic_SaveBookmark
+ * @noreturn
+ */
+native BotMimic_GoToBookmark(client, const String:name[]);
 
 /**
  * Stops a player from mimicing a record.
