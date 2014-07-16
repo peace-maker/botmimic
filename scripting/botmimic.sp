@@ -881,12 +881,6 @@ public SaveBookmark(Handle:plugin, numParams)
 		}
 	}
 	
-	// Save the bookmark
-	iBookmark[BKM_frame] = g_iRecordedTicks[client];
-	iBookmark[BKM_additionalTeleportTick] = g_iCurrentAdditionalTeleportIndex[client];
-	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH, sBookmarkName);
-	PushArrayArray(g_hRecordingBookmarks[client], iBookmark[0], _:Bookmarks);
-	
 	// Save the current state so it can be restored when jumping to that frame.
 	new iAT[AT_SIZE], Float:fBuffer[3];
 	GetClientAbsOrigin(client, fBuffer);
@@ -909,10 +903,31 @@ public SaveBookmark(Handle:plugin, numParams)
 	else
 	{
 		PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT, AT_SIZE);
+		g_iCurrentAdditionalTeleportIndex[client]++;
 	}
 	// Remember, we were teleported this frame!
 	iFrame[additionalFields] |= iAT[_:atFlags];
+	
+	new iWeapon = Client_GetActiveWeapon(client);
+	if(iWeapon != INVALID_ENT_REFERENCE && iFrame[newWeapon] == CSWeapon_NONE && IsValidEntity(iWeapon))
+	{
+		new String:sClassName[64];
+		GetEntityClassname(iWeapon, sClassName, sizeof(sClassName));
+		ReplaceString(sClassName, sizeof(sClassName), "weapon_", "", false);
+		
+		new String:sWeaponAlias[64];
+		CS_GetTranslatedWeaponAlias(sClassName, sWeaponAlias, sizeof(sWeaponAlias));
+		new CSWeaponID:weaponId = CS_AliasToWeaponID(sWeaponAlias);
+		iFrame[newWeapon] = weaponId;
+	}
+	
 	SetArrayArray(g_hRecording[client], g_iRecordedTicks[client]-1, iFrame, _:FrameInfo);
+	
+	// Save the bookmark
+	iBookmark[BKM_frame] = g_iRecordedTicks[client]-1;
+	iBookmark[BKM_additionalTeleportTick] = g_iCurrentAdditionalTeleportIndex[client]-1;
+	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH, sBookmarkName);
+	PushArrayArray(g_hRecordingBookmarks[client], iBookmark[0], _:Bookmarks);
 }
 
 public DeleteRecord(Handle:plugin, numParams)
@@ -1228,7 +1243,8 @@ public GetFileHeaders(Handle:plugin, numParams)
 		iSize = GetNativeCell(3);
 	if(iSize > _:BMFileHeader)
 		iSize = _:BMFileHeader;
-	SetNativeArray(2, iExposedFileHeader, iLen);
+	
+	SetNativeArray(2, iExposedFileHeader, iSize);
 	return _:BM_NoError;
 }
 
@@ -1421,7 +1437,6 @@ WriteRecordToDisk(const String:sPath[], iFileHeader[FILE_HEADER_LENGTH])
 		
 		WriteFileCell(hFile, iBookmark[BKM_frame], 4);
 		WriteFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
-		WriteFileCell(hFile, strlen(iBookmark[BKM_name]), 4);
 		WriteFileString(hFile, iBookmark[BKM_name], true);
 	}
 	
@@ -1510,13 +1525,26 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	headerInfo[_:FH_recordEndTime] = iRecordTime;
 	strcopy(headerInfo[_:FH_recordName], MAX_RECORD_NAME_LENGTH, sRecordName);
 	headerInfo[_:FH_tickCount] = iTickCount;
-	
-	headerInfo[_:FH_bookmarks] = INVALID_HANDLE;
+
 	headerInfo[_:FH_frames] = INVALID_HANDLE;
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
 	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[_:FH_initialPosition][0], headerInfo[_:FH_initialPosition][1], headerInfo[_:FH_initialPosition][2], headerInfo[_:FH_initialAngles][0], headerInfo[_:FH_initialAngles][1], headerInfo[_:FH_initialAngles][2]);
+	
+	// Read in all bookmarks
+	new Handle:hBookmarks = CreateArray(_:Bookmarks);
+	
+	new iBookmark[Bookmarks];
+	for(new i=0;i<iBookmarkCount;i++)
+	{
+		ReadFileCell(hFile, iBookmark[BKM_frame], 4);
+		ReadFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
+		ReadFileString(hFile, iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH);
+		PushArrayArray(hBookmarks, iBookmark[0], _:Bookmarks);
+	}
+	
+	headerInfo[_:FH_bookmarks] = hBookmarks;
 	
 	SetTrieArray(g_hLoadedRecords, path, headerInfo, _:FileHeader);
 	SetTrieString(g_hLoadedRecordsCategory, path, sCategory);
@@ -1529,23 +1557,6 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	
 	// Sort it by record end time
 	SortRecordList();
-	
-	// Read in all bookmarks
-	new Handle:hBookmarks = CreateArray(_:Bookmarks);
-	
-	new iBookmark[Bookmarks], iBookmarkNameSize;
-	for(new i=0;i<iBookmarkCount;i++)
-	{
-		ReadFileCell(hFile, iBookmark[BKM_frame], 4);
-		ReadFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
-		ReadFileCell(hFile, iBookmarkNameSize, 4);
-		if(iBookmarkNameSize > MAX_BOOKMARK_NAME_LENGTH)
-			iBookmarkNameSize = MAX_BOOKMARK_NAME_LENGTH;
-		ReadFileString(hFile, iBookmark[BKM_name], iBookmarkNameSize);
-		PushArrayArray(hBookmarks, iBookmark[0], _:Bookmarks);
-	}
-	
-	headerInfo[_:FH_bookmarks] = hBookmarks;
 	
 	if(onlyHeader)
 	{
