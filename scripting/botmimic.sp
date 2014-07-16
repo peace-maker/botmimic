@@ -83,6 +83,7 @@ new Handle:g_hRecordingBookmarks[MAXPLAYERS+1];
 new g_iCurrentAdditionalTeleportIndex[MAXPLAYERS+1];
 // Is the recording currently paused?
 new bool:g_bRecordingPaused[MAXPLAYERS+1];
+new bool:g_bSaveFullSnapshot[MAXPLAYERS+1];
 // How many calls to OnPlayerRunCmd were recorded?
 new g_iRecordedTicks[MAXPLAYERS+1];
 // What's the last active weapon
@@ -332,16 +333,34 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 		iFrame[playerSubtype] = subtype;
 		iFrame[playerSeed] = seed;
 		
-		// Save the current position 
-		new iInterval = GetConVarInt(g_hCVOriginSnapshotInterval);
-		if(iInterval > 0 && g_iOriginSnapshotInterval[client] > iInterval)
+		// Save the origin, angles and velocity in this frame.
+		if(g_bSaveFullSnapshot[client])
 		{
-			new Float:origin[3], iAT[AdditionalTeleport];
-			GetClientAbsOrigin(client, origin);
-			Array_Copy(origin, iAT[atOrigin], 3);
-			iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+			new iAT[AdditionalTeleport], Float:fBuffer[3];
+			GetClientAbsOrigin(client, fBuffer);
+			Array_Copy(fBuffer, iAT[atOrigin], 3);
+			GetClientEyeAngles(client, fBuffer);
+			Array_Copy(fBuffer, iAT[atAngles], 3);
+			Entity_GetAbsVelocity(client, fBuffer);
+			Array_Copy(fBuffer, iAT[atVelocity], 3);
+			
+			iAT[atFlags] = ADDITIONAL_FIELD_TELEPORTED_ORIGIN|ADDITIONAL_FIELD_TELEPORTED_ANGLES|ADDITIONAL_FIELD_TELEPORTED_VELOCITY;
 			PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT[0], _:AdditionalTeleport);
-			g_iOriginSnapshotInterval[client] = 0;
+			g_bSaveFullSnapshot[client] = false;
+		}
+		else
+		{
+			// Save the current position 
+			new iInterval = GetConVarInt(g_hCVOriginSnapshotInterval);
+			if(iInterval > 0 && g_iOriginSnapshotInterval[client] > iInterval)
+			{
+				new Float:origin[3], iAT[AdditionalTeleport];
+				GetClientAbsOrigin(client, origin);
+				Array_Copy(origin, iAT[atOrigin], 3);
+				iAT[atFlags] |= ADDITIONAL_FIELD_TELEPORTED_ORIGIN;
+				PushArrayArray(g_hRecordingAdditionalTeleport[client], iAT[0], _:AdditionalTeleport);
+				g_iOriginSnapshotInterval[client] = 0;
+			}
 		}
 		
 		g_iOriginSnapshotInterval[client]++;
@@ -769,7 +788,8 @@ public ResumeRecording(Handle:plugin, numParams)
 		return;
 	}
 	
-	// TODO: save position of player when resuming recording (see SaveBookmark)
+	// Save the new full position, angles and velocity.
+	g_bSaveFullSnapshot[client] = true;
 	
 	g_bRecordingPaused[client] = false;
 }
@@ -918,6 +938,7 @@ public StopRecording(Handle:plugin, numParams)
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	g_iOriginSnapshotInterval[client] = 0;
 	g_bRecordingPaused[client] = false;
+	g_bSaveFullSnapshot[client] = false;
 }
 
 public SaveBookmark(Handle:plugin, numParams)

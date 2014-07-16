@@ -943,6 +943,10 @@ DisplayRecordInProgressMenu(client)
 	SetMenuTitle(hMenu, "Recording...");
 	SetMenuExitButton(hMenu, false);
 	
+	if(BotMimic_IsRecordingPaused(client))
+		AddMenuItem(hMenu, "resume", "Resume recording");
+	else
+		AddMenuItem(hMenu, "pause", "Pause recording");
 	AddMenuItem(hMenu, "save", "Save recording");
 	AddMenuItem(hMenu, "discard", "Discard recording");
 	
@@ -964,7 +968,27 @@ public Menu_HandleRecordProgress(Handle:menu, MenuAction:action, param1, param2)
 		GetMenuItem(menu, param2, info, sizeof(info));
 		
 		g_bPlayerRecordingFromMenu[param1] = false;
-		if(StrEqual(info, "save"))
+		if(StrEqual(info, "pause"))
+		{
+			if(!BotMimic_IsRecordingPaused(param1))
+			{
+				BotMimic_PauseRecording(param1);
+				PrintToChat(param1, "[BotMimic] Paused recording.");
+			}
+			
+			DisplayRecordInProgressMenu(param1);
+		}
+		else if(StrEqual(info, "resume"))
+		{
+			if(BotMimic_IsRecordingPaused(param1))
+			{
+				BotMimic_ResumeRecording(param1);
+				PrintToChat(param1, "[BotMimic] Resumed recording.");
+			}
+			
+			DisplayRecordInProgressMenu(param1);
+		}
+		else if(StrEqual(info, "save"))
 		{
 			g_bPlayerStoppedRecording[param1] = true;
 			BotMimic_StopRecording(param1, true);
