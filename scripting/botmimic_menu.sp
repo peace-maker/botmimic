@@ -36,9 +36,12 @@ public OnPluginStart()
 {
 	RegAdminCmd("sm_mimic", Cmd_Record, ADMFLAG_CONFIG, "Opens the bot mimic menu", "botmimic");
 	RegAdminCmd("sm_stoprecord", Cmd_StopRecord, ADMFLAG_CONFIG, "Stops your current record", "botmimic");
+	RegAdminCmd("sm_savebookmark", Cmd_SaveBookmark, ADMFLAG_CONFIG, "Saves a bookmark with the given name in the record the target records. sm_savebookmark <name|steamid|#userid> <bookmark name>", "botmimic");
 	
-	AddCommandListener(CmDLstnr_Say, "say");
-	AddCommandListener(CmDLstnr_Say, "say_team");
+	AddCommandListener(CmdLstnr_Say, "say");
+	AddCommandListener(CmdLstnr_Say, "say_team");
+	
+	LoadTranslations("common.phrases");
 	
 	if(LibraryExists("adminmenu"))
 	{
@@ -124,7 +127,45 @@ public Action:Cmd_StopRecord(client, args)
 	return Plugin_Handled;
 }
 
-public Action:CmDLstnr_Say(client, const String:command[], argc)
+public Action:Cmd_SaveBookmark(client, args)
+{
+	if(args < 2)
+	{
+		ReplyToCommand(client, "[BotMimic] Saves a bookmark with the given name in the record the target records. sm_savebookmark <name|steamid|#userid> <bookmark name>");
+		return Plugin_Handled;
+	}
+	
+	decl String:sTarget[64];
+	GetCmdArg(1, sTarget, sizeof(sTarget));
+	new iTarget = FindTarget(client, sTarget, false, false);
+	if(iTarget == -1)
+		return Plugin_Handled;
+	
+	if(!BotMimic_IsPlayerRecording(iTarget))
+	{
+		ReplyToCommand(client, "[BotMimic] Target %N is not recording.", iTarget);
+		return Plugin_Handled;
+	}
+	
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
+	GetCmdArg(2, sBookmarkName, sizeof(sBookmarkName));
+	TrimString(sBookmarkName);
+	StripQuotes(sBookmarkName);
+	
+	if(strlen(sBookmarkName) == 0)
+	{
+		ReplyToCommand(client, "[BotMimic] You have to give a name for the bookmark.");
+		return Plugin_Handled;
+	}
+	
+	BotMimic_SaveBookmark(iTarget, sBookmarkName);
+	
+	ReplyToCommand(client, "[BotMimic] Saved bookmark \"%s\" in %N's record.", sBookmarkName, iTarget);
+	
+	return Plugin_Handled;
+}
+
+public Action:CmdLstnr_Say(client, const String:command[], argc)
 {
 	decl String:sText[256];
 	GetCmdArgString(sText, sizeof(sText));
