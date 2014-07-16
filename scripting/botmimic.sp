@@ -109,6 +109,7 @@ new g_iBotActiveWeapon[MAXPLAYERS+1] = {-1,...};
 new bool:g_bValidTeleportCall[MAXPLAYERS+1];
 
 new Handle:g_hfwdOnStartRecording;
+new Handle:g_hfwdOnRecordingPauseStateChanged;
 new Handle:g_hfwdOnStopRecording;
 new Handle:g_hfwdOnRecordSaved;
 new Handle:g_hfwdOnRecordDeleted;
@@ -156,6 +157,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("BotMimic_GetRecordBookmarks", GetRecordBookmarks);
 	
 	g_hfwdOnStartRecording = CreateGlobalForward("BotMimic_OnStartRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String);
+	g_hfwdOnRecordingPauseStateChanged = CreateGlobalForward("BotMimic_OnRecordingPauseStateChanged", ET_Ignore, Param_Cell, Param_Cell);
 	g_hfwdOnStopRecording = CreateGlobalForward("BotMimic_OnStopRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String, Param_CellByRef);
 	g_hfwdOnRecordSaved = CreateGlobalForward("BotMimic_OnRecordSaved", ET_Ignore, Param_Cell, Param_String, Param_String, Param_String, Param_String);
 	g_hfwdOnRecordDeleted = CreateGlobalForward("BotMimic_OnRecordDeleted", ET_Ignore, Param_String, Param_String, Param_String);
@@ -765,6 +767,11 @@ public PauseRecording(Handle:plugin, numParams)
 	}
 	
 	g_bRecordingPaused[client] = true;
+	
+	Call_StartForward(g_hfwdOnRecordingPauseStateChanged);
+	Call_PushCell(client);
+	Call_PushCell(true);
+	Call_Finish();
 }
 
 public ResumeRecording(Handle:plugin, numParams)
@@ -792,6 +799,11 @@ public ResumeRecording(Handle:plugin, numParams)
 	g_bSaveFullSnapshot[client] = true;
 	
 	g_bRecordingPaused[client] = false;
+	
+	Call_StartForward(g_hfwdOnRecordingPauseStateChanged);
+	Call_PushCell(client);
+	Call_PushCell(false);
+	Call_Finish();
 }
 
 public IsRecordingPaused(Handle:plugin, numParams)

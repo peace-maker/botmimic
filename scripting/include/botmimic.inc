@@ -235,6 +235,15 @@ native BMError:BotMimic_GetRecordBookmarks(const String:path[], &Handle:bookmark
 forward Action:BotMimic_OnStartRecording(client, String:name[], String:category[], String:subdir[], String:path[]);
 
 /**
+ * Called when recording a record is paused or resumed.
+ *
+ * @param client	The client which recording pause state changed
+ * @param paused	True when the recording was paused, false when it was unpaused
+ * @noreturn
+ */
+forward BotMimic_OnRecordingPauseStateChanged(client, bool:paused);
+
+/**
  * Called when a player stops recording.
  * Change the save param if you want to prevent it from being discarded/written.
  *
