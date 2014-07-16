@@ -21,7 +21,8 @@ enum BMFileHeader {
 	String:BMFH_recordName[MAX_RECORD_NAME_LENGTH],
 	BMFH_tickCount,
 	Float:BMFH_initialPosition[3],
-	Float:BMFH_initialAngles[3]
+	Float:BMFH_initialAngles[3],
+	BMFH_bookmarkCount
 }
 
 /**
@@ -162,7 +163,7 @@ native Handle:BotMimic_GetLoadedRecordCategoryList();
  * @param iFileHeader	An array to store the file header in.
  * @return			BM_NoError if all went smooth, see BMError definition.
  */
-native BMError:BotMimic_GetFileHeaders(const String:path[], iFileHeader[BMFileHeader]);
+native BMError:BotMimic_GetFileHeaders(const String:path[], iFileHeader[BMFileHeader], size=_:BMFileHeader);
 
 /**
  * Get the category of a record.

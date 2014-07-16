@@ -1220,8 +1220,15 @@ public GetFileHeaders(Handle:plugin, numParams)
 	iExposedFileHeader[_:BMFH_tickCount] = iFileHeader[_:FH_tickCount];
 	Array_Copy(iFileHeader[_:BMFH_initialPosition], iExposedFileHeader[_:FH_initialPosition], 3);
 	Array_Copy(iFileHeader[_:BMFH_initialAngles], iExposedFileHeader[_:FH_initialAngles], 3);
+	iExposedFileHeader[_:BMFH_bookmarkCount] = iFileHeader[_:FH_bookmarkCount];
 	
-	SetNativeArray(2, iExposedFileHeader, _:BMFileHeader);
+	
+	new iSize = _:BMFileHeader;
+	if(numParams > 2)
+		iSize = GetNativeCell(3);
+	if(iSize > _:BMFileHeader)
+		iSize = _:BMFileHeader;
+	SetNativeArray(2, iExposedFileHeader, iLen);
 	return _:BM_NoError;
 }
 
