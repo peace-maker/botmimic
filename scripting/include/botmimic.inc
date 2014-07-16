@@ -351,7 +351,12 @@ public SharedPlugin:__pl_botmimic =
 public __pl_botmimic_SetNTVOptional()
 {
 	MarkNativeAsOptional("BotMimic_StartRecording");
+	MarkNativeAsOptional("BotMimic_PauseRecording");
+	MarkNativeAsOptional("BotMimic_ResumeRecording");
+	MarkNativeAsOptional("BotMimic_IsRecordingPaused");
 	MarkNativeAsOptional("BotMimic_StopRecording");
+	MarkNativeAsOptional("BotMimic_SaveBookmark");
+	MarkNativeAsOptional("BotMimic_GoToBookmark");
 	MarkNativeAsOptional("BotMimic_DeleteRecord");
 	MarkNativeAsOptional("BotMimic_IsPlayerRecording");
 	MarkNativeAsOptional("BotMimic_IsPlayerMimicing");
@@ -364,5 +369,6 @@ public __pl_botmimic_SetNTVOptional()
 	MarkNativeAsOptional("BotMimic_GetFileHeaders");
 	MarkNativeAsOptional("BotMimic_GetFileCategory");
 	MarkNativeAsOptional("BotMimic_ChangeRecordName");
+	MarkNativeAsOptional("BotMimic_GetRecordBookmarks");
 }
 #endif
