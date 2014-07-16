@@ -4,6 +4,7 @@
 #define _botmimic_included
 
 #define MAX_RECORD_NAME_LENGTH 64
+#define MAX_BOOKMARK_NAME_LENGTH 64
 #define DEFAULT_CATEGORY "default"
 
 enum BMError {
@@ -54,6 +55,7 @@ native BotMimic_StopRecording(client, bool:save=true);
  * @param name		The name of this bookmark
  * @noreturn
  * @error	Client not recording
+ */
 native BotMimic_SaveBookmark(client, const String:name[]);
 
 /**
@@ -180,6 +182,16 @@ native bool:BotMimic_GetFileCategory(const String:path[], String:category[], max
  * @return			BM_NoError if all went smooth, see BMError definition.
  */
 native BMError:BotMimic_ChangeRecordName(const String:path[], String:name[]);
+
+/**
+ * Get a list of all bookmarks stored in this record as an adt_array.
+ * You have to close the returned Handle using CloseHandle.
+ *
+ * @param path		The path to the .rec record file.
+ * @param bookmarks	The handle where the bookmark array will be stored in.
+ * @return			BM_NoError if all went smooth, see BMError definition.
+ */
+native BMError:BotMimic_GetRecordBookmarks(const String:path[], &Handle:bookmarks);
 
 /**
  * Called when a player starts recording.

@@ -70,11 +70,10 @@ enum FileHeader {
 	Handle:FH_frames
 }
 
-#define MAX_BOOKMARK_NAME 64
 enum Bookmarks {
 	BKM_frame,
 	BKM_additionalTeleportTick,
-	String:BKM_name[MAX_BOOKMARK_NAME]
+	String:BKM_name[MAX_BOOKMARK_NAME_LENGTH]
 };
 
 // Where did he start recording. The bot is teleported to this position on replay.
@@ -151,6 +150,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("BotMimic_GetLoadedRecordCategoryList", GetLoadedRecordCategoryList);
 	CreateNative("BotMimic_GetLoadedRecordList", GetLoadedRecordList);
 	CreateNative("BotMimic_GetFileCategory", GetFileCategory);
+	CreateNative("BotMimic_GetRecordBookmarks", GetRecordBookmarks);
 	
 	g_hfwdOnStartRecording = CreateGlobalForward("BotMimic_OnStartRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String);
 	g_hfwdOnStopRecording = CreateGlobalForward("BotMimic_OnStopRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String, Param_CellByRef);
@@ -865,7 +865,7 @@ public SaveBookmark(Handle:plugin, numParams)
 		return;
 	}
 	
-	new String:sBookmarkName[MAX_BOOKMARK_NAME];
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
 	GetNativeString(2, sBookmarkName, sizeof(sBookmarkName));
 	
 	// First check if there already is a bookmark with this name
@@ -884,7 +884,7 @@ public SaveBookmark(Handle:plugin, numParams)
 	// Save the bookmark
 	iBookmark[BKM_frame] = g_iRecordedTicks[client];
 	iBookmark[BKM_additionalTeleportTick] = g_iCurrentAdditionalTeleportIndex[client];
-	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME, sBookmarkName);
+	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH, sBookmarkName);
 	PushArrayArray(g_hRecordingBookmarks[client], iBookmark[0], _:Bookmarks);
 	
 	// Save the current state so it can be restored when jumping to that frame.
@@ -1043,7 +1043,7 @@ public GoToBookmark(Handle:plugin, numParams)
 		return;
 	}
 	
-	new String:sBookmarkName[MAX_BOOKMARK_NAME];
+	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
 	GetNativeString(2, sBookmarkName, sizeof(sBookmarkName));
 	
 	// Get the file header
@@ -1290,6 +1290,41 @@ public GetFileCategory(Handle:plugin, numParams)
 	return _:bFound;
 }
 
+public GetRecordBookmarks(Handle:plugin, numParams)
+{
+	new iLen;
+	GetNativeStringLength(1, iLen);
+	decl String:sPath[iLen+1];
+	GetNativeString(1, sPath, iLen+1);
+	
+	if(!FileExists(sPath))
+	{
+		return _:BM_FileNotFound;
+	}
+	
+	new iFileHeader[FILE_HEADER_LENGTH];
+	if(!GetTrieArray(g_hLoadedRecords, sPath, iFileHeader, _:FileHeader))
+	{
+		decl String:sCategory[64];
+		if(!GetTrieString(g_hLoadedRecordsCategory, sPath, sCategory, sizeof(sCategory)))
+			strcopy(sCategory, sizeof(sCategory), DEFAULT_CATEGORY);
+		new BMError:error = LoadRecordFromFile(sPath, sCategory, iFileHeader, true, false);
+		if(error != BM_NoError)
+			return _:error;
+	}
+	
+	new Handle:hBookmarks = CreateArray(ByteCountToCells(MAX_BOOKMARK_NAME_LENGTH));
+	new iBookmark[Bookmarks];
+	for(new i=0;i<iFileHeader[_:FH_bookmarkCount];i++)
+	{
+		GetArrayArray(iFileHeader[_:FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		PushArrayString(hBookmarks, iBookmark[BKM_name]);
+	}
+	
+	SetNativeCellRef(2, hBookmarks);
+	return _:BM_NoError;
+}
+
 
 /**
  * Helper functions
@@ -1488,12 +1523,6 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 	// Sort it by record end time
 	SortRecordList();
 	
-	if(onlyHeader)
-	{
-		CloseHandle(hFile);
-		return BM_NoError;
-	}
-	
 	// Read in all bookmarks
 	new Handle:hBookmarks = CreateArray(_:Bookmarks);
 	
@@ -1503,13 +1532,19 @@ BMError:LoadRecordFromFile(const String:path[], const String:sCategory[], header
 		ReadFileCell(hFile, iBookmark[BKM_frame], 4);
 		ReadFileCell(hFile, iBookmark[BKM_additionalTeleportTick], 4);
 		ReadFileCell(hFile, iBookmarkNameSize, 4);
-		if(iBookmarkNameSize > MAX_BOOKMARK_NAME)
-			iBookmarkNameSize = MAX_BOOKMARK_NAME;
+		if(iBookmarkNameSize > MAX_BOOKMARK_NAME_LENGTH)
+			iBookmarkNameSize = MAX_BOOKMARK_NAME_LENGTH;
 		ReadFileString(hFile, iBookmark[BKM_name], iBookmarkNameSize);
 		PushArrayArray(hBookmarks, iBookmark[0], _:Bookmarks);
 	}
 	
 	headerInfo[_:FH_bookmarks] = hBookmarks;
+	
+	if(onlyHeader)
+	{
+		CloseHandle(hFile);
+		return BM_NoError;
+	}
 	
 	// Read in all the saved frames
 	new Handle:hRecordFrames = CreateArray(_:FrameInfo);
