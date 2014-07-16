@@ -40,6 +40,33 @@ enum BMFileHeader {
 native BotMimic_StartRecording(client, const String:name[], const String:category[]="", const String:subdir[]="");
 
 /**
+ * Pause recording the current record.
+ * 
+ * @param client	The recording client, which should pause recording.
+ * @noreturn
+ * @error			Invalid client index, client not recording or recording already paused.
+ */
+native BotMimic_PauseRecording(client);
+
+/**
+ * Resume recording the current record.
+ * 
+ * @param client		The recording client, which should resume recording.
+ * @noreturn
+ * @error				Invalid client index, client not recording or record not paused.
+ */
+native BotMimic_ResumeRecording(client);
+
+/**
+ * Check whether a client is currently paused recording a record.
+ *
+ * @param client	The client index of the player you want to know if he's paused.
+ * @return			True if recording is paused, false otherwise.
+ * @error			Invalid client index or client not recording.
+ */
+native bool:BotMimic_IsRecordingPaused(client);
+
+/**
  * Stop recording and save or discard the record
  * 
  * @param client	The client which was recording

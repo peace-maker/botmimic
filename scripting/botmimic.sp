@@ -81,6 +81,8 @@ new Handle:g_hRecording[MAXPLAYERS+1];
 new Handle:g_hRecordingAdditionalTeleport[MAXPLAYERS+1];
 new Handle:g_hRecordingBookmarks[MAXPLAYERS+1];
 new g_iCurrentAdditionalTeleportIndex[MAXPLAYERS+1];
+// Is the recording currently paused?
+new bool:g_bRecordingPaused[MAXPLAYERS+1];
 // How many calls to OnPlayerRunCmd were recorded?
 new g_iRecordedTicks[MAXPLAYERS+1];
 // What's the last active weapon
@@ -131,6 +133,9 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	RegPluginLibrary("botmimic");
 	CreateNative("BotMimic_StartRecording", StartRecording);
+	CreateNative("BotMimic_PauseRecording", PauseRecording);
+	CreateNative("BotMimic_ResumeRecording", ResumeRecording);
+	CreateNative("BotMimic_IsRecordingPaused", IsRecordingPaused);
 	CreateNative("BotMimic_StopRecording", StopRecording);
 	CreateNative("BotMimic_SaveBookmark", SaveBookmark);
 	CreateNative("BotMimic_DeleteRecord", DeleteRecord);
@@ -312,7 +317,7 @@ public OnClientDisconnect(client)
 public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:angles[3], &weapon, &subtype, &cmdnum, &tickcount, &seed, mouse[2])
 {
 	// client is recording his movements
-	if(g_hRecording[client] != INVALID_HANDLE)
+	if(g_hRecording[client] != INVALID_HANDLE && !g_bRecordingPaused[client])
 	{
 		new iFrame[FrameInfo];
 		iFrame[playerButtons] = buttons;
@@ -719,6 +724,74 @@ public StartRecording(Handle:plugin, numParams)
 		BotMimic_StopRecording(client, false);
 }
 
+public PauseRecording(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return;
+	}
+	
+	if(g_hRecording[client] == INVALID_HANDLE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not recording.");
+		return;
+	}
+	
+	if(g_bRecordingPaused[client])
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Recording is already paused.");
+		return;
+	}
+	
+	g_bRecordingPaused[client] = true;
+}
+
+public ResumeRecording(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return;
+	}
+	
+	if(g_hRecording[client] == INVALID_HANDLE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not recording.");
+		return;
+	}
+	
+	if(!g_bRecordingPaused[client])
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Recording is not paused.");
+		return;
+	}
+	
+	// TODO: save position of player when resuming recording (see SaveBookmark)
+	
+	g_bRecordingPaused[client] = false;
+}
+
+public IsRecordingPaused(Handle:plugin, numParams)
+{
+	new client = GetNativeCell(1);
+	if(client < 1 || client > MaxClients || !IsClientInGame(client))
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Bad player index %d", client);
+		return false;
+	}
+	
+	if(g_hRecording[client] == INVALID_HANDLE)
+	{
+		ThrowNativeError(SP_ERROR_NATIVE, "Player is not recording.");
+		return false;
+	}
+	
+	return g_bRecordingPaused[client];
+}
+
 public StopRecording(Handle:plugin, numParams)
 {
 	new client = GetNativeCell(1);
@@ -844,6 +917,7 @@ public StopRecording(Handle:plugin, numParams)
 	g_sRecordSubDir[client][0] = 0;
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	g_iOriginSnapshotInterval[client] = 0;
+	g_bRecordingPaused[client] = false;
 }
 
 public SaveBookmark(Handle:plugin, numParams)
