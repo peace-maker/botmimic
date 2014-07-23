@@ -368,6 +368,14 @@ DisplayRecordMenu(client)
 {
 	g_sPlayerSelectedRecord[client][0] = '\0';
 	
+	// We don't have a category selected? Show the correct menu!
+	// This is to go back to the correct menu when discarding a record in the progress menu.
+	if(g_sPlayerSelectedCategory[client][0] == '\0')
+	{
+		DisplayCategoryMenu(client);
+		return;
+	}
+	
 	new Handle:hMenu = CreateMenu(Menu_SelectRecord);
 	decl String:sTitle[64];
 	Format(sTitle, sizeof(sTitle), "Manage Recordings in %s", g_sPlayerSelectedCategory[client]);
