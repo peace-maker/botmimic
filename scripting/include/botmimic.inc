@@ -244,6 +244,15 @@ forward Action:BotMimic_OnStartRecording(client, String:name[], String:category[
 forward BotMimic_OnRecordingPauseStateChanged(client, bool:paused);
 
 /**
+ * Called when a bookmark is saved while the client is recording.
+ *
+ * @param client	The client which is recording.
+ * @param bookmark	The name of the saved bookmark.
+ * @noreturn
+ */
+forward BotMimic_OnRecordingBookmarkSaved(client, const String:bookmark[]);
+
+/**
  * Called when a player stops recording.
  * Change the save param if you want to prevent it from being discarded/written.
  *
@@ -309,6 +318,15 @@ forward BotMimic_OnPlayerStopsMimicing(client, String:name[], String:category[],
  * @noreturn
  */
 forward BotMimic_OnPlayerMimicLoops(client);
+
+/**
+ * Called when a bookmark is reached during playback of a record.
+ *
+ * @param client	The client which is mimicing.
+ * @param bookmark	The name of the bookmark.
+ * @noreturn
+ */
+forward BotMimic_OnPlayerMimicBookmark(client, const String:bookmark[]);
 
 /**
  * Translate an error id to a human readable string

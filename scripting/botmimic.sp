@@ -75,6 +75,12 @@ enum Bookmarks {
 	String:BKM_name[MAX_BOOKMARK_NAME_LENGTH]
 };
 
+// Used to fire the OnPlayerMimicBookmark effciently during playback
+enum BookmarkWhileMimicing {
+	BWM_frame, // The frame this bookmark was saved in
+	BWM_index // The index into the FH_bookmarks array in the fileheader for the corresponding bookmark (to get the name)
+};
+
 // Where did he start recording. The bot is teleported to this position on replay.
 new Float:g_fInitialPosition[MAXPLAYERS+1][3];
 new Float:g_fInitialAngles[MAXPLAYERS+1][3];
@@ -109,6 +115,7 @@ new g_iBotMimicTick[MAXPLAYERS+1] = {0,...};
 new g_iBotMimicRecordTickCount[MAXPLAYERS+1] = {0,...};
 new g_iBotActiveWeapon[MAXPLAYERS+1] = {-1,...};
 new bool:g_bValidTeleportCall[MAXPLAYERS+1];
+new g_iBotMimicNextBookmarkTick[MAXPLAYERS+1][BookmarkWhileMimicing];
 
 new Handle:g_hfwdOnStartRecording;
 new Handle:g_hfwdOnRecordingPauseStateChanged;
@@ -119,6 +126,7 @@ new Handle:g_hfwdOnRecordDeleted;
 new Handle:g_hfwdOnPlayerStartsMimicing;
 new Handle:g_hfwdOnPlayerStopsMimicing;
 new Handle:g_hfwdOnPlayerMimicLoops;
+new Handle:g_hfwdOnPlayerMimicBookmark;
 
 // DHooks
 new Handle:g_hTeleport;
@@ -168,6 +176,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	g_hfwdOnPlayerStartsMimicing = CreateGlobalForward("BotMimic_OnPlayerStartsMimicing", ET_Hook, Param_Cell, Param_String, Param_String, Param_String);
 	g_hfwdOnPlayerStopsMimicing = CreateGlobalForward("BotMimic_OnPlayerStopsMimicing", ET_Ignore, Param_Cell, Param_String, Param_String, Param_String);
 	g_hfwdOnPlayerMimicLoops = CreateGlobalForward("BotMimic_OnPlayerMimicLoops", ET_Ignore, Param_Cell);
+	g_hfwdOnPlayerMimicBookmark = CreateGlobalForward("BotMimic_OnPlayerMimicBookmark", ET_Ignore, Param_Cell, Param_String);
 }
 
 public OnPluginStart()
@@ -547,6 +556,28 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
 				Client_SetActiveWeapon(client, weapon);
 			}
+		}
+		
+		// See if there's a bookmark on this tick
+		if(g_iBotMimicTick[client] == g_iBotMimicNextBookmarkTick[client][BWM_frame])
+		{
+			// Get the file header of the current playing record.
+			new String:sPath[PLATFORM_MAX_PATH];
+			GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
+			new iFileHeader[FileHeader];
+			GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
+	
+			new iBookmark[Bookmarks];
+			GetArrayArray(iFileHeader[FH_bookmarks], g_iBotMimicNextBookmarkTick[client][BWM_index], iBookmark[0], _:Bookmarks);
+			
+			// Cache the next tick in which we should fire the forward.
+			UpdateNextBookmarkTick(client);
+			
+			// Call the forward
+			Call_StartForward(g_hfwdOnPlayerMimicBookmark);
+			Call_PushCell(client);
+			Call_PushString(iBookmark[BKM_name]);
+			Call_Finish();
 		}
 		
 		g_iBotMimicTick[client]++;
@@ -1183,10 +1214,10 @@ public GoToBookmark(Handle:plugin, numParams)
 	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
 	
 	// Get the bookmark with this name
-	new iBookmark[Bookmarks], bool:bBookmarkFound;
-	for(new i=0;i<iFileHeader[FH_bookmarkCount];i++)
+	new iBookmark[Bookmarks], bool:bBookmarkFound, iBookmarkIndex;
+	for(;iBookmarkIndex<iFileHeader[FH_bookmarkCount];iBookmarkIndex++)
 	{
-		GetArrayArray(iFileHeader[FH_bookmarks], i, iBookmark[0], _:Bookmarks);
+		GetArrayArray(iFileHeader[FH_bookmarks], iBookmarkIndex, iBookmark[0], _:Bookmarks);
 		if(StrEqual(iBookmark[BKM_name], sBookmarkName, false))
 		{
 			bBookmarkFound = true;
@@ -1202,6 +1233,10 @@ public GoToBookmark(Handle:plugin, numParams)
 	
 	g_iBotMimicTick[client] = iBookmark[BKM_frame];
 	g_iCurrentAdditionalTeleportIndex[client] = iBookmark[BKM_additionalTeleportTick];
+	
+	// Remember that we're now at this bookmark.
+	g_iBotMimicNextBookmarkTick[client][BWM_frame] = iBookmark[BKM_frame];
+	g_iBotMimicNextBookmarkTick[client][BWM_index] = iBookmarkIndex;
 }
 
 public StopPlayerMimic(Handle:plugin, numParams)
@@ -1227,6 +1262,8 @@ public StopPlayerMimic(Handle:plugin, numParams)
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	g_iBotMimicRecordTickCount[client] = 0;
 	g_bValidTeleportCall[client] = false;
+	g_iBotMimicNextBookmarkTick[client][BWM_frame] = -1;
+	g_iBotMimicNextBookmarkTick[client][BWM_index] = -1;
 	
 	new iFileHeader[FileHeader];
 	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
@@ -1316,6 +1353,10 @@ public ResetPlayback(Handle:plugin, numParams)
 	
 	g_iBotMimicTick[client] = 0;
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
+	g_bValidTeleportCall[client] = false;
+	g_iBotMimicNextBookmarkTick[client][BWM_frame] = -1;
+	g_iBotMimicNextBookmarkTick[client][BWM_index] = -1;
+	UpdateNextBookmarkTick(client);
 }
 
 public GetFileHeaders(Handle:plugin, numParams)
@@ -1757,6 +1798,11 @@ BMError:PlayRecord(client, const String:path[])
 	g_iBotMimicRecordTickCount[client] = iFileHeader[FH_tickCount];
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
 	
+	// Cache at which tick we should fire the first OnPlayerMimicBookmark forward.
+	g_iBotMimicNextBookmarkTick[client][BWM_frame] = -1;
+	g_iBotMimicNextBookmarkTick[client][BWM_index] = -1;
+	UpdateNextBookmarkTick(client);
+	
 	Array_Copy(iFileHeader[FH_initialPosition], g_fInitialPosition[client], 3);
 	Array_Copy(iFileHeader[FH_initialAngles], g_fInitialAngles[client], 3);
 	
@@ -1782,12 +1828,44 @@ BMError:PlayRecord(client, const String:path[])
 	{
 		g_hBotMimicsRecord[client] = INVALID_HANDLE;
 		g_iBotMimicRecordTickCount[client] = 0;
+		g_iBotMimicNextBookmarkTick[client][BWM_frame] = -1;
+		g_iBotMimicNextBookmarkTick[client][BWM_index] = -1;
 	}
 	
 	return BM_NoError;
 }
 
-
+// Find the next frame in which a bookmark was saved, so the OnPlayerMimicBookmark forward can be called.
+UpdateNextBookmarkTick(client)
+{
+	// Not mimicing anything.
+	if(g_hBotMimicsRecord[client] == INVALID_HANDLE)
+		return;
+	
+	new String:sPath[PLATFORM_MAX_PATH];
+	GetFileFromFrameHandle(g_hBotMimicsRecord[client], sPath, sizeof(sPath));
+	new iFileHeader[FileHeader];
+	GetTrieArray(g_hLoadedRecords, sPath, iFileHeader[0], _:FileHeader);
+	
+	if(iFileHeader[FH_bookmarks] == INVALID_HANDLE)
+		return;
+	
+	new iSize = GetArraySize(iFileHeader[FH_bookmarks]);
+	if(iSize == 0)
+		return;
+	
+	new iCurrentIndex = g_iBotMimicNextBookmarkTick[client][BWM_index];
+	// We just reached some bookmark regularly and want to proceed to wait for the next one sequentially.
+	// If there is no further bookmarks, restart from the first one.
+	iCurrentIndex++;
+	if(iCurrentIndex >= iSize)
+		iCurrentIndex = 0;
+	
+	new iBookmark[Bookmarks];
+	GetArrayArray(iFileHeader[FH_bookmarks], iCurrentIndex, iBookmark[0], _:Bookmarks);
+	g_iBotMimicNextBookmarkTick[client][BWM_frame] = iBookmark[BKM_frame];
+	g_iBotMimicNextBookmarkTick[client][BWM_index] = iCurrentIndex;
+}
 
 stock bool:CheckCreateDirectory(const String:sPath[], mode)
 {
