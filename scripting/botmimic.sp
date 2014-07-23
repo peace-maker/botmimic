@@ -132,6 +132,7 @@ new Handle:g_hfwdOnPlayerMimicBookmark;
 new Handle:g_hTeleport;
 
 new Handle:g_hCVOriginSnapshotInterval;
+new Handle:g_hCVRespawnOnDeath;
 
 public Plugin:myinfo = 
 {
@@ -191,6 +192,7 @@ public OnPluginStart()
 	// Save the position of clients every 10000 ticks
 	// This is to avoid bots getting stuck in walls due to slightly lower jumps, if they don't touch the ground.
 	g_hCVOriginSnapshotInterval = CreateConVar("sm_botmimic_snapshotinterval", "10000", "Save the position of clients every x ticks. This is to avoid bots getting stuck in walls during a long playback and lots of jumps.", _, true, 0.0);
+	g_hCVRespawnOnDeath = CreateConVar("sm_botmimic_respawnondeath", "1", "Respawn the bot when he dies during playback?", _, true, 0.0, true, 1.0);
 	
 	AutoExecConfig();
 	
@@ -622,7 +624,7 @@ public Event_OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcast
 		// Respawn the bot after death!
 		g_iBotMimicTick[client] = 0;
 		g_iCurrentAdditionalTeleportIndex[client] = 0;
-		if(GetClientTeam(client) >= CS_TEAM_T)
+		if(GetConVarBool(g_hCVRespawnOnDeath) && GetClientTeam(client) >= CS_TEAM_T)
 			CreateTimer(1.0, Timer_DelayedRespawn, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 	}
 }
