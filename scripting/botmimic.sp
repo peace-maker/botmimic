@@ -22,6 +22,8 @@
 #define PLUGIN_VERSION "2.0.1"
 
 #define BM_MAGIC 0xdeadbeef
+
+// New in 0x02: bookmarkCount and bookmarks list
 #define BINARY_FORMAT_VERSION 0x02
 
 #define DEFAULT_RECORD_FOLDER "data/botmimic/"
@@ -110,6 +112,7 @@ new bool:g_bValidTeleportCall[MAXPLAYERS+1];
 
 new Handle:g_hfwdOnStartRecording;
 new Handle:g_hfwdOnRecordingPauseStateChanged;
+new Handle:g_hfwdOnRecordingBookmarkSaved;
 new Handle:g_hfwdOnStopRecording;
 new Handle:g_hfwdOnRecordSaved;
 new Handle:g_hfwdOnRecordDeleted;
@@ -158,6 +161,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	
 	g_hfwdOnStartRecording = CreateGlobalForward("BotMimic_OnStartRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String);
 	g_hfwdOnRecordingPauseStateChanged = CreateGlobalForward("BotMimic_OnRecordingPauseStateChanged", ET_Ignore, Param_Cell, Param_Cell);
+	g_hfwdOnRecordingBookmarkSaved = CreateGlobalForward("BotMimic_OnRecordingBookmarkSaved", ET_Ignore, Param_Cell, Param_String);
 	g_hfwdOnStopRecording = CreateGlobalForward("BotMimic_OnStopRecording", ET_Hook, Param_Cell, Param_String, Param_String, Param_String, Param_String, Param_CellByRef);
 	g_hfwdOnRecordSaved = CreateGlobalForward("BotMimic_OnRecordSaved", ET_Ignore, Param_Cell, Param_String, Param_String, Param_String, Param_String);
 	g_hfwdOnRecordDeleted = CreateGlobalForward("BotMimic_OnRecordDeleted", ET_Ignore, Param_String, Param_String, Param_String);
@@ -1032,6 +1036,12 @@ public SaveBookmark(Handle:plugin, numParams)
 	iBookmark[BKM_additionalTeleportTick] = g_iCurrentAdditionalTeleportIndex[client]-1;
 	strcopy(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH, sBookmarkName);
 	PushArrayArray(g_hRecordingBookmarks[client], iBookmark[0], _:Bookmarks);
+	
+	// Inform other plugins, that there's been a bookmark saved.
+	Call_StartForward(g_hfwdOnRecordingBookmarkSaved);
+	Call_PushCell(client);
+	Call_PushString(sBookmarkName);
+	Call_Finish();
 }
 
 public DeleteRecord(Handle:plugin, numParams)
