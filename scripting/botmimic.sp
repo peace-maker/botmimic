@@ -553,10 +553,23 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 			}
 			else
 			{
-				weapon = Client_GiveWeapon(client, sAlias, false);
-				g_iBotActiveWeapon[client] = weapon;
-				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
-				Client_SetActiveWeapon(client, weapon);
+				weapon = GivePlayerItem(client, sAlias);
+				if(weapon != INVALID_ENT_REFERENCE)
+				{
+					g_iBotActiveWeapon[client] = weapon;
+					
+					// Grenades shouldn't be equipped.
+					if(StrContains(sAlias, "grenade") == -1 
+					&& StrContains(sAlias, "flashbang") == -1 
+					&& StrContains(sAlias, "decoy") == -1 
+					&& StrContains(sAlias, "molotov") == -1)
+					{
+						EquipPlayerWeapon(client, weapon);
+					}
+					
+					SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
+					Client_SetActiveWeapon(client, weapon);
+				}
 			}
 		}
 		
