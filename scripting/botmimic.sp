@@ -6,6 +6,7 @@
  * Changelog:
  * 2.0   - 22.07.2013: Released rewrite
  * 2.0.1 - 01.08.2013: Actually made DHooks an optional dependency.
+ * 2.1   - 02.10.2014: Added bookmarks and pausing/resuming while recording. Fixed crashes and problems with CS:GO.
  */
 
 #pragma semicolon 1
@@ -19,7 +20,7 @@
 #undef REQUIRE_EXTENSIONS
 #include <dhooks>
 
-#define PLUGIN_VERSION "2.0.1"
+#define PLUGIN_VERSION "2.1"
 
 #define BM_MAGIC 0xdeadbeef
 

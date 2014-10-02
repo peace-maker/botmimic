@@ -1,3 +1,14 @@
+/**
+ * Bot Mimic - Record your movments and have bots playing it back.
+ * Admin menu integration and menu interface.
+ * by Peace-Maker
+ * visit http://wcfan.de
+ * 
+ * Changelog:
+ * 1.0   - 22.07.2013: Released rewrite
+ * 1.1   - 02.10.2014: Added sm_savebookmark and bookmark integration and pausing/resuming while recording.
+ */
+
 #pragma semicolon 1
 #include <sourcemod>
 #include <cstrike>
@@ -6,7 +17,7 @@
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
 
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 // This player just stopped recording. Show him the details edit menu when the record was saved.
 new bool:g_bPlayerRecordingFromMenu[MAXPLAYERS+1];
