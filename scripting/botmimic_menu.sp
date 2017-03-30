@@ -17,24 +17,26 @@
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
 
+#pragma newdecls required
+
 #define PLUGIN_VERSION "1.1"
 
 // This player just stopped recording. Show him the details edit menu when the record was saved.
-new bool:g_bPlayerRecordingFromMenu[MAXPLAYERS+1];
-new bool:g_bPlayerStoppedRecording[MAXPLAYERS+1];
+bool g_bPlayerRecordingFromMenu[MAXPLAYERS+1];
+bool g_bPlayerStoppedRecording[MAXPLAYERS+1];
 
-new String:g_sPlayerSelectedCategory[MAXPLAYERS+1][PLATFORM_MAX_PATH];
-new String:g_sPlayerSelectedRecord[MAXPLAYERS+1][PLATFORM_MAX_PATH];
-new String:g_sPlayerSelectedBookmark[MAXPLAYERS+1][MAX_BOOKMARK_NAME_LENGTH];
-new String:g_sNextBotMimicsThis[PLATFORM_MAX_PATH];
-new String:g_sSupposedToMimic[MAXPLAYERS+1][PLATFORM_MAX_PATH];
-new bool:g_bRenameRecord[MAXPLAYERS+1];
-new bool:g_bEnterCategoryName[MAXPLAYERS+1];
+char g_sPlayerSelectedCategory[MAXPLAYERS+1][PLATFORM_MAX_PATH];
+char g_sPlayerSelectedRecord[MAXPLAYERS+1][PLATFORM_MAX_PATH];
+char g_sPlayerSelectedBookmark[MAXPLAYERS+1][MAX_BOOKMARK_NAME_LENGTH];
+char g_sNextBotMimicsThis[PLATFORM_MAX_PATH];
+char g_sSupposedToMimic[MAXPLAYERS+1][PLATFORM_MAX_PATH];
+bool g_bRenameRecord[MAXPLAYERS+1];
+bool g_bEnterCategoryName[MAXPLAYERS+1];
 
 // Admin Menu
-new Handle:g_hAdminMenu;
+TopMenu g_hAdminMenu;
 
-public Plugin:myinfo = 
+public Plugin myinfo = 
 {
 	name = "Bot Mimic Menu",
 	author = "Jannik \"Peace-Maker\" Hartung",
@@ -43,7 +45,7 @@ public Plugin:myinfo =
 	url = "http://www.wcfan.de/"
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	RegAdminCmd("sm_mimic", Cmd_Record, ADMFLAG_CONFIG, "Opens the bot mimic menu", "botmimic");
 	RegAdminCmd("sm_stoprecord", Cmd_StopRecord, ADMFLAG_CONFIG, "Stops your current record", "botmimic");
@@ -56,22 +58,22 @@ public OnPluginStart()
 	
 	if(LibraryExists("adminmenu"))
 	{
-		new Handle:hTopMenu = GetAdminTopMenu();
-		if(hTopMenu != INVALID_HANDLE)
+		TopMenu hTopMenu = GetAdminTopMenu();
+		if(hTopMenu != null)
 			OnAdminMenuReady(hTopMenu);
 	}
 }
 
-public OnLibraryRemoved(const String:name[])
+public void OnLibraryRemoved(const char[] name)
 {
 	if(StrEqual(name, "adminmenu"))
-		g_hAdminMenu = INVALID_HANDLE;
+		g_hAdminMenu = null;
 }
 
 /**
  * Public forwards
  */
-public bool:OnClientConnect(client, String:rejectmsg[], maxlen)
+public bool OnClientConnect(int client, char[] rejectmsg, int maxlen)
 {
 	if(IsFakeClient(client) && g_sNextBotMimicsThis[0] != '\0')
 	{
@@ -82,7 +84,7 @@ public bool:OnClientConnect(client, String:rejectmsg[], maxlen)
 	return true;
 }
 
-public OnClientPutInServer(client)
+public void OnClientPutInServer(int client)
 {
 	if(g_sSupposedToMimic[client][0] != '\0')
 	{
@@ -90,7 +92,7 @@ public OnClientPutInServer(client)
 	}
 }
 
-public OnClientDisconnect(client)
+public void OnClientDisconnect(int client)
 {
 	g_sPlayerSelectedCategory[client][0] = '\0';
 	g_sPlayerSelectedRecord[client][0] = '\0';
@@ -105,7 +107,7 @@ public OnClientDisconnect(client)
 /**
  * Command callbacks
  */
-public Action:Cmd_Record(client, args)
+public Action Cmd_Record(int client, int args)
 {
 	if(!client)
 		return Plugin_Handled;
@@ -121,7 +123,7 @@ public Action:Cmd_Record(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Cmd_StopRecord(client, args)
+public Action Cmd_StopRecord(int client, int args)
 {
 	if(!client)
 		return Plugin_Handled;
@@ -138,7 +140,7 @@ public Action:Cmd_StopRecord(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Cmd_SaveBookmark(client, args)
+public Action Cmd_SaveBookmark(int client, int args)
 {
 	if(args < 2)
 	{
@@ -146,9 +148,9 @@ public Action:Cmd_SaveBookmark(client, args)
 		return Plugin_Handled;
 	}
 	
-	decl String:sTarget[64];
+	char sTarget[64];
 	GetCmdArg(1, sTarget, sizeof(sTarget));
-	new iTarget = FindTarget(client, sTarget, false, false);
+	int iTarget = FindTarget(client, sTarget, false, false);
 	if(iTarget == -1)
 		return Plugin_Handled;
 	
@@ -158,7 +160,7 @@ public Action:Cmd_SaveBookmark(client, args)
 		return Plugin_Handled;
 	}
 	
-	new String:sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
+	char sBookmarkName[MAX_BOOKMARK_NAME_LENGTH];
 	GetCmdArg(2, sBookmarkName, sizeof(sBookmarkName));
 	TrimString(sBookmarkName);
 	StripQuotes(sBookmarkName);
@@ -176,9 +178,9 @@ public Action:Cmd_SaveBookmark(client, args)
 	return Plugin_Handled;
 }
 
-public Action:CmdLstnr_Say(client, const String:command[], argc)
+public Action CmdLstnr_Say(int client, const char[] command, int argc)
 {
-	decl String:sText[256];
+	char sText[256];
 	GetCmdArgString(sText, sizeof(sText));
 	StripQuotes(sText);
 
@@ -203,10 +205,10 @@ public Action:CmdLstnr_Say(client, const String:command[], argc)
 			return Plugin_Handled;
 		}
 		
-		new BMError:error= BotMimic_ChangeRecordName(g_sPlayerSelectedRecord[client], sText);
+		BMError error= BotMimic_ChangeRecordName(g_sPlayerSelectedRecord[client], sText);
 		if(error != BM_NoError)
 		{
-			decl String:sError[64];
+			char sError[64];
 			BotMimic_GetErrorString(error, sError, sizeof(sError));
 			PrintToChat(client, "[BotMimic] There was an error changing the name: %s", sError);
 			return Plugin_Handled;
@@ -228,8 +230,8 @@ public Action:CmdLstnr_Say(client, const String:command[], argc)
 			return Plugin_Handled;
 		}
 		
-		new Handle:hCategoryList = BotMimic_GetLoadedRecordCategoryList();
-		PushArrayString(hCategoryList, sText);
+		ArrayList hCategoryList = BotMimic_GetLoadedRecordCategoryList();
+		hCategoryList.PushString(sText);
 		
 		//TODO: SortRecordList();
 		strcopy(g_sPlayerSelectedCategory[client], sizeof(g_sPlayerSelectedCategory[]), sText);
@@ -244,7 +246,7 @@ public Action:CmdLstnr_Say(client, const String:command[], argc)
 /**
  * Bot Mimic Callbacks
  */
-public BotMimic_OnRecordSaved(client, String:name[], String:category[], String:subdir[], String:file[])
+public void BotMimic_OnRecordSaved(int client, char[] name, char[] category, char[] subdir, char[] file)
 {
 	if(g_bPlayerStoppedRecording[client])
 	{
@@ -255,9 +257,9 @@ public BotMimic_OnRecordSaved(client, String:name[], String:category[], String:s
 	}
 }
 
-public BotMimic_OnRecordDeleted(String:name[], String:category[], String:path[])
+public void BotMimic_OnRecordDeleted(char[] name, char[] category, char[] path)
 {
-	for(new i=1;i<=MaxClients;i++)
+	for(int i=1;i<=MaxClients;i++)
 	{
 		if(StrEqual(g_sPlayerSelectedRecord[i], path))
 		{
@@ -270,7 +272,7 @@ public BotMimic_OnRecordDeleted(String:name[], String:category[], String:path[])
 		g_sNextBotMimicsThis[0] = '\0';
 }
 
-public Action:BotMimic_OnStopRecording(client, String:name[], String:category[], String:subdir[], String:path[], &bool:save)
+public Action BotMimic_OnStopRecording(int client, char[] name, char[] category, char[] subdir, char[] path, bool &save)
 {
 	// That's nothing we started.
 	if(!g_bPlayerRecordingFromMenu[client])
@@ -285,43 +287,43 @@ public Action:BotMimic_OnStopRecording(client, String:name[], String:category[],
  * Menu creation and handling
  */
 
-DisplayCategoryMenu(client)
+void DisplayCategoryMenu(int client)
 {
 	g_bRenameRecord[client] = false;
 	g_bEnterCategoryName[client] = false;
 	g_sPlayerSelectedCategory[client][0] = '\0';
 	g_sPlayerSelectedRecord[client][0] = '\0';
 	
-	new Handle:hMenu = CreateMenu(Menu_SelectCategory);
-	SetMenuTitle(hMenu, "Manage Movement Recording Categories");
+	Menu hMenu = new Menu(Menu_SelectCategory);
+	hMenu.SetTitle("Manage Movement Recording Categories");
 	if(g_hAdminMenu)
-		SetMenuExitBackButton(hMenu, true);
+		hMenu.ExitBackButton = true;
 	else
-		SetMenuExitButton(hMenu, true);
+		hMenu.ExitButton = true;
 	
-	AddMenuItem(hMenu, "record", "Record new movement");
-	AddMenuItem(hMenu, "createcategory", "Create new category");
-	AddMenuItem(hMenu, "", "", ITEMDRAW_SPACER);
+	hMenu.AddItem("record", "Record new movement");
+	hMenu.AddItem("createcategory", "Create new category");
+	hMenu.AddItem("", "", ITEMDRAW_SPACER);
 	
-	new Handle:hCategoryList = BotMimic_GetLoadedRecordCategoryList();
-	new iSize = GetArraySize(hCategoryList);
-	decl String:sCategory[64];
-	for(new i=0;i<iSize;i++)
+	ArrayList hCategoryList = BotMimic_GetLoadedRecordCategoryList();
+	int iSize = hCategoryList.Length;
+	char sCategory[64];
+	for(int i=0;i<iSize;i++)
 	{
-		GetArrayString(hCategoryList, i, sCategory, sizeof(sCategory));
+		hCategoryList.GetString(i, sCategory, sizeof(sCategory));
 		
-		AddMenuItem(hMenu, sCategory, sCategory);
+		hMenu.AddItem(sCategory, sCategory);
 	}
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_SelectCategory(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_SelectCategory(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
-		new String:info[PLATFORM_MAX_PATH];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[PLATFORM_MAX_PATH];
+		menu.GetItem(param2, info, sizeof(info));
 		
 		// He want's to start a new record
 		if(StrEqual(info, "record"))
@@ -347,7 +349,7 @@ public Menu_SelectCategory(Handle:menu, MenuAction:action, param1, param2)
 				return;
 			}
 			
-			decl String:sTempName[MAX_RECORD_NAME_LENGTH];
+			char sTempName[MAX_RECORD_NAME_LENGTH];
 			Format(sTempName, sizeof(sTempName), "%d_%d", GetTime(), param1);
 			g_bPlayerRecordingFromMenu[param1] = true;
 			BotMimic_StartRecording(param1, sTempName, DEFAULT_CATEGORY);
@@ -371,11 +373,11 @@ public Menu_SelectCategory(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-DisplayRecordMenu(client)
+void DisplayRecordMenu(int client)
 {
 	g_sPlayerSelectedRecord[client][0] = '\0';
 	
@@ -387,23 +389,23 @@ DisplayRecordMenu(client)
 		return;
 	}
 	
-	new Handle:hMenu = CreateMenu(Menu_SelectRecord);
-	decl String:sTitle[64];
+	Menu hMenu = new Menu(Menu_SelectRecord);
+	char sTitle[64];
 	Format(sTitle, sizeof(sTitle), "Manage Recordings in %s", g_sPlayerSelectedCategory[client]);
-	SetMenuTitle(hMenu, sTitle);
-	SetMenuExitBackButton(hMenu, true);
+	hMenu.SetTitle(sTitle);
+	hMenu.ExitBackButton = true;
 	
-	AddMenuItem(hMenu, "record", "Record new movement");
-	AddMenuItem(hMenu, "", "", ITEMDRAW_SPACER);
+	hMenu.AddItem("record", "Record new movement");
+	hMenu.AddItem("", "", ITEMDRAW_SPACER);
 	
-	new Handle:hRecordList = BotMimic_GetLoadedRecordList();
+	ArrayList hRecordList = BotMimic_GetLoadedRecordList();
 	
-	new iSize = GetArraySize(hRecordList);
-	decl String:sPath[PLATFORM_MAX_PATH], String:sBuffer[MAX_RECORD_NAME_LENGTH+24], String:sCategory[64];
-	new iFileHeader[BMFileHeader], iPlaying;
-	for(new i=0;i<iSize;i++)
+	int iSize = hRecordList.Length;
+	char sPath[PLATFORM_MAX_PATH], sBuffer[MAX_RECORD_NAME_LENGTH+24], sCategory[64];
+	int iFileHeader[BMFileHeader], iPlaying;
+	for(int i=0;i<iSize;i++)
 	{
-		GetArrayString(hRecordList, i, sPath, sizeof(sPath));
+		hRecordList.GetString(i, sPath, sizeof(sPath));
 		
 		// Only show records from the selected category
 		BotMimic_GetFileCategory(sPath, sCategory, sizeof(sCategory));
@@ -414,8 +416,8 @@ DisplayRecordMenu(client)
 		
 		// How many bots are currently playing this record?
 		iPlaying = 0;
-		decl String:sPlayerPath[PLATFORM_MAX_PATH];
-		for(new c=1;c<=MaxClients;c++)
+		char sPlayerPath[PLATFORM_MAX_PATH];
+		for(int c=1;c<=MaxClients;c++)
 		{
 			if(IsClientInGame(c) && BotMimic_IsPlayerMimicing(c))
 			{
@@ -430,18 +432,18 @@ DisplayRecordMenu(client)
 		else
 			Format(sBuffer, sizeof(sBuffer), "%s", iFileHeader[BMFH_recordName]);
 		
-		AddMenuItem(hMenu, sPath, sBuffer);
+		hMenu.AddItem(sPath, sBuffer);
 	}
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_SelectRecord(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_SelectRecord(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
-		new String:info[PLATFORM_MAX_PATH];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[PLATFORM_MAX_PATH];
+		menu.GetItem(param2, info, sizeof(info));
 		
 		// He want's to start a new record
 		if(StrEqual(info, "record"))
@@ -467,7 +469,7 @@ public Menu_SelectRecord(Handle:menu, MenuAction:action, param1, param2)
 				return;
 			}
 			
-			decl String:sTempName[MAX_RECORD_NAME_LENGTH];
+			char sTempName[MAX_RECORD_NAME_LENGTH];
 			Format(sTempName, sizeof(sTempName), "%d_%d", GetTime(), param1);
 			g_bPlayerRecordingFromMenu[param1] = true;
 			BotMimic_StartRecording(param1, sTempName, g_sPlayerSelectedCategory[param1]);
@@ -487,11 +489,11 @@ public Menu_SelectRecord(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-DisplayRecordDetailMenu(client)
+void DisplayRecordDetailMenu(int client)
 {
 	if(g_sPlayerSelectedRecord[client][0] == '\0' || !FileExists(g_sPlayerSelectedRecord[client]))
 	{
@@ -500,7 +502,7 @@ DisplayRecordDetailMenu(client)
 		return;
 	}
 	
-	new iFileHeader[BMFileHeader];
+	int iFileHeader[BMFileHeader];
 	if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[client], iFileHeader) != BM_NoError)
 	{
 		g_sPlayerSelectedRecord[client][0] = '\0';
@@ -508,27 +510,27 @@ DisplayRecordDetailMenu(client)
 		return;
 	}
 	
-	new Handle:hMenu = CreateMenu(Menu_HandleRecordDetails);
-	SetMenuTitle(hMenu, "Record \"%s\": Details", iFileHeader[BMFH_recordName]);
-	SetMenuExitBackButton(hMenu, true);
+	Menu hMenu = new Menu(Menu_HandleRecordDetails);
+	hMenu.SetTitle("Record \"%s\": Details", iFileHeader[BMFH_recordName]);
+	hMenu.ExitBackButton = true;
 	
-	AddMenuItem(hMenu, "playselect", "Select a bot to mimic");
-	AddMenuItem(hMenu, "playadd", "Add a bot to mimic");
-	AddMenuItem(hMenu, "stop", "Stop any bots mimicing this record");
-	AddMenuItem(hMenu, "bookmarks", "Display bookmarks", iFileHeader[BMFH_bookmarkCount]>0?ITEMDRAW_DEFAULT:ITEMDRAW_DISABLED);
-	AddMenuItem(hMenu, "rename", "Rename this record");
-	AddMenuItem(hMenu, "delete", "Delete");
+	hMenu.AddItem("playselect", "Select a bot to mimic");
+	hMenu.AddItem("playadd", "Add a bot to mimic");
+	hMenu.AddItem("stop", "Stop any bots mimicing this record");
+	hMenu.AddItem("bookmarks", "Display bookmarks", iFileHeader[BMFH_bookmarkCount]>0?ITEMDRAW_DEFAULT:ITEMDRAW_DISABLED);
+	hMenu.AddItem("rename", "Rename this record");
+	hMenu.AddItem("delete", "Delete");
 	
-	decl String:sBuffer[64];
+	char sBuffer[64];
 	Format(sBuffer, sizeof(sBuffer), "Length: %d ticks", iFileHeader[BMFH_tickCount]);
-	AddMenuItem(hMenu, "", sBuffer, ITEMDRAW_DISABLED);
+	hMenu.AddItem("", sBuffer, ITEMDRAW_DISABLED);
 	FormatTime(sBuffer, sizeof(sBuffer), "Recorded: %c", iFileHeader[BMFH_recordEndTime]);
-	AddMenuItem(hMenu, "", sBuffer, ITEMDRAW_DISABLED);
+	hMenu.AddItem("", sBuffer, ITEMDRAW_DISABLED);
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_HandleRecordDetails(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -539,7 +541,7 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new iFileHeader[BMFileHeader];
+		int iFileHeader[BMFileHeader];
 		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -547,20 +549,20 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new String:info[32];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[32];
+		menu.GetItem(param2, info, sizeof(info));
 		
 		// Select a present bot
 		if(StrEqual(info, "playselect"))
 		{
 			// Build up a menu with bots
-			new Handle:hMenu = CreateMenu(Menu_SelectBotToMimic);
-			SetMenuTitle(hMenu, "Which bot should mimic this record?");
-			SetMenuExitBackButton(hMenu, true);
+			Menu hMenu = new Menu(Menu_SelectBotToMimic);
+			hMenu.SetTitle("Which bot should mimic this record?");
+			hMenu.ExitBackButton = true;
 			
-			decl String:sUserId[6], String:sBuffer[MAX_NAME_LENGTH*2];
-			decl String:sPath[PLATFORM_MAX_PATH];
-			for(new i=1;i<=MaxClients;i++)
+			char sUserId[6], sBuffer[MAX_NAME_LENGTH*2];
+			char sPath[PLATFORM_MAX_PATH];
+			for(int i=1;i<=MaxClients;i++)
 			{
 				if(IsClientInGame(i) && IsFakeClient(i) && GetClientTeam(i) >= CS_TEAM_T && !IsClientSourceTV(i) && !IsClientReplay(i))
 				{
@@ -578,33 +580,34 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 						BotMimic_GetFileHeaders(sPath, iFileHeader);
 						Format(sBuffer, sizeof(sBuffer), "%s (Plays %s)", sBuffer, iFileHeader[BMFH_recordName]);
 					}
-					AddMenuItem(hMenu, sUserId, sBuffer);
+					hMenu.AddItem(sUserId, sBuffer);
 				}
 			}
 			
 			// Only show the player list, if there is a bot on the server
 			if(GetMenuItemCount(hMenu) > 0)
-				DisplayMenu(hMenu, param1, MENU_TIME_FOREVER);
+				hMenu.Display(param1, MENU_TIME_FOREVER);
 			else
 				DisplayRecordDetailMenu(param1);
 		}
 		// Add a new bot just for this purpose.
 		else if(StrEqual(info, "playadd"))
 		{
-			new Handle:hMenu = CreateMenu(Menu_SelectBotTeam);
-			SetMenuTitle(hMenu, "Select the team for the new bot");
-			SetMenuExitBackButton(hMenu, true);
+			Menu hMenu = new Menu(Menu_SelectBotTeam);
+			hMenu.SetTitle("Select the team for the new bot");
+			hMenu.ExitBackButton = true;
 			
-			AddMenuItem(hMenu, "t", "Terrorist");
-			AddMenuItem(hMenu, "ct", "Counter-Terrorist");
+			hMenu.AddItem("t", "Terrorist");
+			hMenu.AddItem("ct", "Counter-Terrorist");
 			
-			DisplayMenu(hMenu, param1, MENU_TIME_FOREVER);
+			hMenu.Display(param1, MENU_TIME_FOREVER);
 		}
 		// Stop all bots playing this record
 		else if(StrEqual(info, "stop"))
 		{
-			new iCount, String:sPath[PLATFORM_MAX_PATH];
-			for(new i=1;i<=MaxClients;i++)
+			int iCount;
+			char sPath[PLATFORM_MAX_PATH];
+			for(int i=1;i<=MaxClients;i++)
 			{
 				if(IsClientInGame(i) && BotMimic_IsPlayerMimicing(i))
 				{
@@ -631,7 +634,7 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 		}
 		else if(StrEqual(info, "delete"))
 		{
-			new iCount = BotMimic_DeleteRecord(g_sPlayerSelectedRecord[param1]);
+			int iCount = BotMimic_DeleteRecord(g_sPlayerSelectedRecord[param1]);
 			
 			PrintToChat(param1, "[BotMimic] Stopped %d bots and deleted record \"%s\".", iCount, iFileHeader[BMFH_recordName]);
 			
@@ -647,11 +650,11 @@ public Menu_HandleRecordDetails(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_SelectBotToMimic(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -662,7 +665,7 @@ public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new iFileHeader[BMFileHeader];
+		int iFileHeader[BMFileHeader];
 		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -670,11 +673,11 @@ public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new String:info[32];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[32];
+		menu.GetItem(param2, info, sizeof(info));
 		
-		new userid = StringToInt(info);
-		new iBot = GetClientOfUserId(userid);
+		int userid = StringToInt(info);
+		int iBot = GetClientOfUserId(userid);
 		
 		if(!iBot || !IsClientInGame(iBot) || GetClientTeam(iBot) < CS_TEAM_T)
 		{
@@ -683,7 +686,7 @@ public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		decl String:sPath[PLATFORM_MAX_PATH];
+		char sPath[PLATFORM_MAX_PATH];
 		if(BotMimic_IsPlayerMimicing(iBot))
 		{
 			BotMimic_GetRecordPlayerMimics(iBot, sPath, sizeof(sPath));
@@ -718,11 +721,11 @@ public Menu_SelectBotToMimic(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_SelectBotTeam(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -733,7 +736,7 @@ public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new iFileHeader[BMFileHeader];
+		int iFileHeader[BMFileHeader];
 		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -741,8 +744,8 @@ public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new String:info[32];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[32];
+		menu.GetItem(param2, info, sizeof(info));
 		
 		strcopy(g_sNextBotMimicsThis, sizeof(g_sNextBotMimicsThis), g_sPlayerSelectedRecord[param1]);
 		
@@ -768,15 +771,15 @@ public Menu_SelectBotTeam(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-DisplayBookmarkListMenu(client)
+void DisplayBookmarkListMenu(int client)
 {
 	g_sPlayerSelectedBookmark[client][0]= '\0';
 	
-	new iFileHeader[BMFileHeader];
+	int iFileHeader[BMFileHeader];
 	if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[client], iFileHeader) != BM_NoError)
 	{
 		g_sPlayerSelectedRecord[client][0] = '\0';
@@ -784,11 +787,11 @@ DisplayBookmarkListMenu(client)
 		return;
 	}
 	
-	new Handle:hMenu = CreateMenu(Menu_HandleBookmarkList);
-	SetMenuTitle(hMenu, "Bookmarks for record \"%s\"", iFileHeader[BMFH_recordName]);
-	SetMenuExitBackButton(hMenu, true);
+	Menu hMenu = new Menu(Menu_HandleBookmarkList);
+	hMenu.SetTitle("Bookmarks for record \"%s\"", iFileHeader[BMFH_recordName]);
+	hMenu.ExitBackButton = true;
 	
-	new Handle:hBookmarks;
+	ArrayList hBookmarks;
 	if(BotMimic_GetRecordBookmarks(g_sPlayerSelectedRecord[client], hBookmarks) != BM_NoError)
 	{
 		g_sPlayerSelectedRecord[client][0] = '\0';
@@ -796,19 +799,19 @@ DisplayBookmarkListMenu(client)
 		return;
 	}
 	
-	new iSize = GetArraySize(hBookmarks);
-	decl String:sBuffer[MAX_BOOKMARK_NAME_LENGTH];
-	for(new i=0;i<iSize;i++)
+	int iSize = hBookmarks.Length;
+	char sBuffer[MAX_BOOKMARK_NAME_LENGTH];
+	for(int i=0;i<iSize;i++)
 	{
-		GetArrayString(hBookmarks, i, sBuffer, sizeof(sBuffer));
-		AddMenuItem(hMenu, sBuffer, sBuffer);
+		hBookmarks.GetString(i, sBuffer, sizeof(sBuffer));
+		hMenu.AddItem(sBuffer, sBuffer);
 	}
-	CloseHandle(hBookmarks);
+	delete hBookmarks;
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_HandleBookmarkList(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_HandleBookmarkList(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -819,7 +822,7 @@ public Menu_HandleBookmarkList(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new iFileHeader[BMFileHeader];
+		int iFileHeader[BMFileHeader];
 		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -827,8 +830,8 @@ public Menu_HandleBookmarkList(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new String:info[MAX_BOOKMARK_NAME_LENGTH];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[MAX_BOOKMARK_NAME_LENGTH];
+		menu.GetItem(param2, info, sizeof(info));
 		strcopy(g_sPlayerSelectedBookmark[param1], MAX_BOOKMARK_NAME_LENGTH, info);
 		
 		DisplayBookmarkMimicingPlayers(param1);
@@ -842,18 +845,18 @@ public Menu_HandleBookmarkList(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-DisplayBookmarkMimicingPlayers(client)
+void DisplayBookmarkMimicingPlayers(int client)
 {
-	new Handle:hMenu = CreateMenu(Menu_HandleBookmarkMimicingPlayer);
-	SetMenuTitle(hMenu, "Select which player who currently plays the record should jump to bookmark \"%s\":", g_sPlayerSelectedBookmark[client]);
-	SetMenuExitBackButton(hMenu, true);
+	Menu hMenu = new Menu(Menu_HandleBookmarkMimicingPlayer);
+	hMenu.SetTitle("Select which player who currently plays the record should jump to bookmark \"%s\":", g_sPlayerSelectedBookmark[client]);
+	hMenu.ExitBackButton = true;
 	
-	new String:sBuffer[PLATFORM_MAX_PATH], String:sUserId[16];
-	for(new i=1;i<=MaxClients;i++)
+	char sBuffer[PLATFORM_MAX_PATH], sUserId[16];
+	for(int i=1;i<=MaxClients;i++)
 	{
 		if(!IsClientInGame(i) || !BotMimic_IsPlayerMimicing(i))
 			continue;
@@ -864,16 +867,16 @@ DisplayBookmarkMimicingPlayers(client)
 		
 		Format(sBuffer, sizeof(sBuffer), "%N (#%d)", i, GetClientUserId(i));
 		IntToString(GetClientUserId(i), sUserId, sizeof(sUserId));
-		AddMenuItem(hMenu, sUserId, sBuffer);
+		hMenu.AddItem(sUserId, sBuffer);
 	}
 	
 	if(GetMenuItemCount(hMenu) == 0)
-		AddMenuItem(hMenu, "", "No players currently mimicing this record.", ITEMDRAW_DISABLED);
+		hMenu.AddItem("", "No players currently mimicing this record.", ITEMDRAW_DISABLED);
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_HandleBookmarkMimicingPlayer(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -891,7 +894,7 @@ public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1,
 			return;
 		}
 		
-		new iFileHeader[BMFileHeader];
+		int iFileHeader[BMFileHeader];
 		if(BotMimic_GetFileHeaders(g_sPlayerSelectedRecord[param1], iFileHeader) != BM_NoError)
 		{
 			g_sPlayerSelectedRecord[param1][0] = '\0';
@@ -900,11 +903,11 @@ public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1,
 			return;
 		}
 		
-		new String:info[MAX_BOOKMARK_NAME_LENGTH];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[MAX_BOOKMARK_NAME_LENGTH];
+		menu.GetItem(param2, info, sizeof(info));
 		
-		new userid = StringToInt(info);
-		new iTarget = GetClientOfUserId(userid);
+		int userid = StringToInt(info);
+		int iTarget = GetClientOfUserId(userid);
 		
 		if(!iTarget || !IsClientInGame(iTarget) || GetClientTeam(iTarget) < CS_TEAM_T)
 		{
@@ -921,7 +924,7 @@ public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1,
 		}
 		else
 		{
-			decl String:sRecordPath[PLATFORM_MAX_PATH];
+			char sRecordPath[PLATFORM_MAX_PATH];
 			BotMimic_GetRecordPlayerMimics(iTarget, sRecordPath, sizeof(sRecordPath));
 			if(!StrEqual(sRecordPath, g_sPlayerSelectedRecord[param1], false))
 			{
@@ -946,11 +949,11 @@ public Menu_HandleBookmarkMimicingPlayer(Handle:menu, MenuAction:action, param1,
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
-DisplayRecordInProgressMenu(client)
+void DisplayRecordInProgressMenu(int client)
 {
 	if(!BotMimic_IsPlayerRecording(client))
 	{
@@ -958,21 +961,21 @@ DisplayRecordInProgressMenu(client)
 		return;
 	}
 	
-	new Handle:hMenu = CreateMenu(Menu_HandleRecordProgress);
-	SetMenuTitle(hMenu, "Recording...");
-	SetMenuExitButton(hMenu, false);
+	Menu hMenu = new Menu(Menu_HandleRecordProgress);
+	hMenu.SetTitle("Recording...");
+	hMenu.ExitButton = false;
 	
 	if(BotMimic_IsRecordingPaused(client))
-		AddMenuItem(hMenu, "resume", "Resume recording");
+		hMenu.AddItem("resume", "Resume recording");
 	else
-		AddMenuItem(hMenu, "pause", "Pause recording");
-	AddMenuItem(hMenu, "save", "Save recording");
-	AddMenuItem(hMenu, "discard", "Discard recording");
+		hMenu.AddItem("pause", "Pause recording");
+	hMenu.AddItem("save", "Save recording");
+	hMenu.AddItem("discard", "Discard recording");
 	
-	DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public Menu_HandleRecordProgress(Handle:menu, MenuAction:action, param1, param2)
+public int Menu_HandleRecordProgress(Menu menu, MenuAction action, int param1, int param2)
 {
 	if (action == MenuAction_Select)
 	{
@@ -983,8 +986,8 @@ public Menu_HandleRecordProgress(Handle:menu, MenuAction:action, param1, param2)
 			return;
 		}
 		
-		new String:info[32];
-		GetMenuItem(menu, param2, info, sizeof(info));
+		char info[32];
+		menu.GetItem(param2, info, sizeof(info));
 		
 		g_bPlayerRecordingFromMenu[param1] = false;
 		if(StrEqual(info, "pause"))
@@ -1025,33 +1028,34 @@ public Menu_HandleRecordProgress(Handle:menu, MenuAction:action, param1, param2)
 	}
 	else if (action == MenuAction_End)
 	{
-		CloseHandle(menu);
+		delete menu;
 	}
 }
 
 /**
  * Admin Menu Integration
  */
-public OnAdminMenuReady(Handle:topmenu)
+public void OnAdminMenuReady(Handle hndl)
 {
+	TopMenu topmenu = TopMenu.FromHandle(hndl);
 	// Don't add the category twice!
 	if(g_hAdminMenu == topmenu)
 		return;
 	
 	g_hAdminMenu = topmenu;
 	
-	new TopMenuObject:iBotMimicCategory;
-	if((iBotMimicCategory = FindTopMenuCategory(topmenu, "Bot Mimic")) == INVALID_TOPMENUOBJECT)
-		iBotMimicCategory = AddToTopMenu(topmenu, "Bot Mimic", TopMenuObject_Category, TopMenu_SelectCategory, INVALID_TOPMENUOBJECT, "sm_mimic", ADMFLAG_CONFIG);
+	TopMenuObject iBotMimicCategory;
+	if((iBotMimicCategory = topmenu.FindCategory("Bot Mimic")) == INVALID_TOPMENUOBJECT)
+		iBotMimicCategory = topmenu.AddCategory("Bot Mimic", TopMenu_SelectCategory, "sm_mimic", ADMFLAG_CONFIG);
 	
 	if(iBotMimicCategory == INVALID_TOPMENUOBJECT)
 		return;
 	
-	AddToTopMenu(topmenu, "Record new movement", TopMenuObject_Item, TopMenu_NewRecord, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
-	AddToTopMenu(topmenu, "List categories", TopMenuObject_Item, TopMenu_ListCategories, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
+	topmenu.AddItem("Record new movement", TopMenu_NewRecord, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
+	topmenu.AddItem("List categories", TopMenu_ListCategories, iBotMimicCategory, "sm_mimic", ADMFLAG_CONFIG);
 }
 
-public TopMenu_SelectCategory(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+public void TopMenu_SelectCategory(TopMenu topmenu, TopMenuAction action, TopMenuObject topobj_id, int param, char[] buffer, int maxlength)
 {
 	if(action == TopMenuAction_DisplayTitle)
 	{
@@ -1063,7 +1067,7 @@ public TopMenu_SelectCategory(Handle:topmenu, TopMenuAction:action, TopMenuObjec
 	}
 }
 
-public TopMenu_NewRecord(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+public void TopMenu_NewRecord(TopMenu topmenu, TopMenuAction action, TopMenuObject topobj_id, int param, char[] buffer, int maxlength)
 {
 	if(action == TopMenuAction_DisplayOption)
 	{
@@ -1092,7 +1096,7 @@ public TopMenu_NewRecord(Handle:topmenu, TopMenuAction:action, TopMenuObject:obj
 			return;
 		}
 		
-		decl String:sTempName[MAX_RECORD_NAME_LENGTH];
+		char sTempName[MAX_RECORD_NAME_LENGTH];
 		Format(sTempName, sizeof(sTempName), "%d_%d", GetTime(), param);
 		g_bPlayerRecordingFromMenu[param] = true;
 		BotMimic_StartRecording(param, sTempName, DEFAULT_CATEGORY);
@@ -1100,7 +1104,7 @@ public TopMenu_NewRecord(Handle:topmenu, TopMenuAction:action, TopMenuObject:obj
 	}
 }
 
-public TopMenu_ListCategories(Handle:topmenu, TopMenuAction:action, TopMenuObject:object_id, param, String:buffer[], maxlength)
+public void TopMenu_ListCategories(TopMenu topmenu, TopMenuAction action, TopMenuObject topobj_id, int param, char[] buffer, int maxlength)
 {
 	if(action == TopMenuAction_DisplayOption)
 	{

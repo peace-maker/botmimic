@@ -3,12 +3,14 @@
 #include <sdktools>
 #include <botmimic>
 
+#pragma newdecls required
+
 #define PLUGIN_VERSION "1.0"
 
-new Handle:g_hCVShowDamage;
-new Handle:g_hCVPlayHitSound;
+ConVar g_hCVShowDamage;
+ConVar g_hCVPlayHitSound;
 
-public Plugin:myinfo = 
+public Plugin myinfo = 
 {
 	name = "Bot Mimic Training",
 	author = "Jannik \"Peace-Maker\" Hartung",
@@ -17,36 +19,36 @@ public Plugin:myinfo =
 	url = "http://www.wcfan.de/"
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
-	g_hCVShowDamage = CreateConVar("sm_botmimic_showdamage", "1", "Show damage when hitting a mimicing bot?", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_hCVPlayHitSound = CreateConVar("sm_botmimic_playhitsound", "1", "Play a sound when hitting a mimicing bot?", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_hCVShowDamage = CreateConVar("sm_botmimic_showdamage", "1", "Show damage when hitting a mimicing bot?", _, true, 0.0, true, 1.0);
+	g_hCVPlayHitSound = CreateConVar("sm_botmimic_playhitsound", "1", "Play a sound when hitting a mimicing bot?", _, true, 0.0, true, 1.0);
 	
 	HookEvent("player_hurt", Event_OnPlayerHurt);
 }
 
-public OnMapStart()
+public void OnMapStart()
 {
 	PrecacheSound("ui/achievement_earned.wav", true);
 }
 
-public Event_OnPlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+public void Event_OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(event.GetInt("userid"));
 	if(!client)
 		return;
 	
-	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
 	if(!attacker)
 		return;
 	
 	if(BotMimic_IsPlayerMimicing(client))
 	{
 		// Show the hitgroup he's been hit and the damage done.
-		if(GetConVarBool(g_hCVShowDamage))
+		if(g_hCVShowDamage.BoolValue)
 		{
-			new iHitGroup = GetEventInt(event, "hitgroup");
-			decl String:sHitGroup[64];
+			int iHitGroup = event.GetInt("hitgroup");
+			char sHitGroup[64];
 			switch(iHitGroup)
 			{
 				case 0:
@@ -67,10 +69,10 @@ public Event_OnPlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
 					Format(sHitGroup, sizeof(sHitGroup), "R Foot");
 			}
 			
-			PrintCenterText(attacker, "%s : %d", sHitGroup, GetEventInt(event, "dmg_health") + GetEventInt(event, "dmg_armor"));
+			PrintCenterText(attacker, "%s : %d", sHitGroup, event.GetInt("dmg_health") + event.GetInt("dmg_armor"));
 		}
 		
-		if(GetConVarBool(g_hCVPlayHitSound))
+		if(g_hCVPlayHitSound.BoolValue)
 			EmitSoundToClient(attacker, "ui/achievement_earned.wav", SOUND_FROM_PLAYER, SNDCHAN_AUTO, SNDLEVEL_ROCKET);
 	}
 }
