@@ -275,7 +275,11 @@ public void OnMapStart()
 	for(int i=0;i<iSize;i++)
 	{
 		g_hSortedRecordList.GetString(i, sPath, sizeof(sPath));
-		g_hLoadedRecords.GetArray(sPath, iFileHeader[0], view_as<int>(FileHeader));
+		if (!g_hLoadedRecords.GetArray(sPath, iFileHeader[0], view_as<int>(FileHeader)))
+		{
+			LogError("Internal state error. %s was in the sorted list, but not in the actual storage.", sPath);
+			continue;
+		}
 		if(iFileHeader[FH_frames] != null)
 			delete iFileHeader[FH_frames];
 		if(iFileHeader[FH_bookmarks] != null)
@@ -1525,7 +1529,9 @@ public int GetRecordBookmarks(Handle plugin, int numParams)
 		hBookmarks.PushString(iBookmark[BKM_name]);
 	}
 	
-	SetNativeCellRef(2, hBookmarks);
+	Handle hClone = CloneHandle(hBookmarks, plugin);
+	delete hBookmarks;
+	SetNativeCellRef(2, hClone);
 	return view_as<int>(BM_NoError);
 }
 
@@ -1653,6 +1659,10 @@ BMError LoadRecordFromFile(const char[] path, const char[] sCategory, int header
 	if(!FileExists(path))
 		return BM_FileNotFound;
 	
+	// Make sure the handle references are null in the input structure.
+	headerInfo[FH_frames] = null;
+	headerInfo[FH_bookmarks] = null;
+
 	// Already loaded that file?
 	bool bAlreadyLoaded = false;
 	if(g_hLoadedRecords.GetArray(path, headerInfo[0], view_as<int>(FileHeader)))
@@ -1710,7 +1720,11 @@ BMError LoadRecordFromFile(const char[] path, const char[] sCategory, int header
 	strcopy(headerInfo[FH_recordName], MAX_RECORD_NAME_LENGTH, sRecordName);
 	headerInfo[FH_tickCount] = iTickCount;
 
-	headerInfo[FH_frames] = null;
+	delete headerInfo[FH_frames];
+	delete headerInfo[FH_bookmarks];
+	ArrayList hAT;
+	if(g_hLoadedRecordsAdditionalTeleport.GetValue(path, hAT))
+ 		delete hAT;
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
@@ -1777,6 +1791,8 @@ BMError LoadRecordFromFile(const char[] path, const char[] sCategory, int header
 	g_hLoadedRecords.SetArray(path, headerInfo[0], view_as<int>(FileHeader));
 	if(hAdditionalTeleport.Length > 0)
 		g_hLoadedRecordsAdditionalTeleport.SetValue(path, hAdditionalTeleport);
+	else
+		delete hAdditionalTeleport;
 	
 	delete hFile;
 	return BM_NoError;
