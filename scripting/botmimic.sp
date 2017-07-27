@@ -965,8 +965,15 @@ public int StopRecording(Handle plugin, int numParams)
 		Array_Copy(g_fInitialAngles[client], iHeader[FH_initialAngles], 3);
 		iHeader[FH_frames] = g_hRecording[client];
 		
-		iHeader[FH_bookmarkCount] = g_hRecordingBookmarks[client].Length;
-		iHeader[FH_bookmarks] = g_hRecordingBookmarks[client];
+		if (g_hRecordingBookmarks[client].Length > 0)
+		{
+			iHeader[FH_bookmarkCount] = g_hRecordingBookmarks[client].Length;
+			iHeader[FH_bookmarks] = g_hRecordingBookmarks[client];
+		}
+		else
+		{
+			delete g_hRecordingBookmarks[client];
+		}
 		
 		if(g_hRecordingAdditionalTeleport[client].Length > 0)
 		{
@@ -1730,19 +1737,22 @@ BMError LoadRecordFromFile(const char[] path, const char[] sCategory, int header
 	//PrintToServer("File %s:", path);
 	//PrintToServer("EndTime: %d, BinaryVersion: 0x%x, ticks: %d, initialPosition: %f,%f,%f, initialAngles: %f,%f,%f", iRecordTime, iBinaryFormatVersion, iTickCount, headerInfo[FH_initialPosition][0], headerInfo[FH_initialPosition][1], headerInfo[FH_initialPosition][2], headerInfo[FH_initialAngles][0], headerInfo[FH_initialAngles][1], headerInfo[FH_initialAngles][2]);
 	
-	// Read in all bookmarks
-	ArrayList hBookmarks = new ArrayList(view_as<int>(Bookmarks));
-	
-	int iBookmark[Bookmarks];
-	for(int i=0;i<iBookmarkCount;i++)
+	if (iBookmarkCount > 0)
 	{
-		hFile.ReadInt32(iBookmark[BKM_frame]);
-		hFile.ReadInt32(iBookmark[BKM_additionalTeleportTick]);
-		hFile.ReadString(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH);
-		hBookmarks.PushArray(iBookmark[0], view_as<int>(Bookmarks));
+		// Read in all bookmarks
+		ArrayList hBookmarks = new ArrayList(view_as<int>(Bookmarks));
+		
+		int iBookmark[Bookmarks];
+		for(int i=0;i<iBookmarkCount;i++)
+		{
+			hFile.ReadInt32(iBookmark[BKM_frame]);
+			hFile.ReadInt32(iBookmark[BKM_additionalTeleportTick]);
+			hFile.ReadString(iBookmark[BKM_name], MAX_BOOKMARK_NAME_LENGTH);
+			hBookmarks.PushArray(iBookmark[0], view_as<int>(Bookmarks));
+		}
+		
+		headerInfo[FH_bookmarks] = hBookmarks;
 	}
-	
-	headerInfo[FH_bookmarks] = hBookmarks;
 	
 	g_hLoadedRecords.SetArray(path, headerInfo[0], view_as<int>(FileHeader));
 	g_hLoadedRecordsCategory.SetString(path, sCategory);
