@@ -1731,7 +1731,10 @@ BMError LoadRecordFromFile(const char[] path, const char[] sCategory, int header
 	delete headerInfo[FH_bookmarks];
 	ArrayList hAT;
 	if(g_hLoadedRecordsAdditionalTeleport.GetValue(path, hAT))
+	{
  		delete hAT;
+ 		g_hLoadedRecordsAdditionalTeleport.Remove(path);
+	}
 	
 	//PrintToServer("Record %s:", sRecordName);
 	//PrintToServer("File %s:", path);
