@@ -117,6 +117,7 @@ ArrayList g_hBotMimicsRecord[MAXPLAYERS+1] = {null,...};
 int g_iBotMimicTick[MAXPLAYERS+1] = {0,...};
 int g_iBotMimicRecordTickCount[MAXPLAYERS+1] = {0,...};
 int g_iBotActiveWeapon[MAXPLAYERS+1] = {-1,...};
+bool g_bBotSwitchedWeapon[MAXPLAYERS+1];
 bool g_bValidTeleportCall[MAXPLAYERS+1];
 int g_iBotMimicNextBookmarkTick[MAXPLAYERS+1][BookmarkWhileMimicing];
 
@@ -564,8 +565,7 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		{
 			weapon = Client_GetWeapon(client, sAlias);
 			g_iBotActiveWeapon[client] = weapon;
-			SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
-			Client_SetActiveWeapon(client, weapon);
+			g_bBotSwitchedWeapon[client] = true;
 		}
 		else
 		{
@@ -573,7 +573,9 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			if(weapon != INVALID_ENT_REFERENCE)
 			{
 				g_iBotActiveWeapon[client] = weapon;
-				
+				// Switch to that new weapon on the next frame.
+				g_bBotSwitchedWeapon[client] = true;
+
 				// Grenades shouldn't be equipped.
 				if(StrContains(sAlias, "grenade") == -1 
 				&& StrContains(sAlias, "flashbang") == -1 
@@ -582,11 +584,15 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 				{
 					EquipPlayerWeapon(client, weapon);
 				}
-				
-				SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", weapon);
-				Client_SetActiveWeapon(client, weapon);
 			}
 		}
+	}
+	// Switch the weapon on the next frame after it was selected.
+	else if (g_bBotSwitchedWeapon[client])
+	{
+		g_bBotSwitchedWeapon[client] = false;
+		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", g_iBotActiveWeapon[client]);
+		Client_SetActiveWeapon(client, g_iBotActiveWeapon[client]);
 	}
 	
 	// See if there's a bookmark on this tick
@@ -1857,6 +1863,8 @@ BMError PlayRecord(int client, const char[] path)
 	g_iBotMimicTick[client] = 0;
 	g_iBotMimicRecordTickCount[client] = iFileHeader[FH_tickCount];
 	g_iCurrentAdditionalTeleportIndex[client] = 0;
+	g_iBotActiveWeapon[client] = INVALID_ENT_REFERENCE;
+	g_bBotSwitchedWeapon[client] = false;
 	
 	// Cache at which tick we should fire the first OnPlayerMimicBookmark forward.
 	g_iBotMimicNextBookmarkTick[client][BWM_frame] = -1;
