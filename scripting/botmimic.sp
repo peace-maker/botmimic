@@ -1431,8 +1431,8 @@ public int GetFileHeaders(Handle plugin, int numParams)
 	iExposedFileHeader[BMFH_recordEndTime] = iFileHeader[FH_recordEndTime];
 	strcopy(iExposedFileHeader[BMFH_recordName], MAX_RECORD_NAME_LENGTH, iFileHeader[FH_recordName]);
 	iExposedFileHeader[BMFH_tickCount] = iFileHeader[FH_tickCount];
-	Array_Copy(iFileHeader[BMFH_initialPosition], iExposedFileHeader[FH_initialPosition], 3);
-	Array_Copy(iFileHeader[BMFH_initialAngles], iExposedFileHeader[FH_initialAngles], 3);
+	Array_Copy(iFileHeader[FH_initialPosition], iExposedFileHeader[BMFH_initialPosition], 3);
+	Array_Copy(iFileHeader[FH_initialAngles], iExposedFileHeader[BMFH_initialAngles], 3);
 	iExposedFileHeader[BMFH_bookmarkCount] = iFileHeader[FH_bookmarkCount];
 	
 	
