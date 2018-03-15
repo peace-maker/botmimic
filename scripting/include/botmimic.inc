@@ -374,6 +374,7 @@ public void __pl_botmimic_SetNTVOptional()
 	MarkNativeAsOptional("BotMimic_IsPlayerMimicing");
 	MarkNativeAsOptional("BotMimic_GetRecordPlayerMimics");
 	MarkNativeAsOptional("BotMimic_PlayRecordFromFile");
+	MarkNativeAsOptional("BotMimic_ResetPlayback");
 	MarkNativeAsOptional("BotMimic_PlayRecordByName");
 	MarkNativeAsOptional("BotMimic_StopPlayerMimic");
 	MarkNativeAsOptional("BotMimic_GetLoadedRecordCategoryList");
