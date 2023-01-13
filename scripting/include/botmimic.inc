@@ -15,22 +15,22 @@ enum BMError {
 	BM_NewerBinaryVersion // The record was recorded with a newer version of Bot Mimic and can't be played.
 };
 
-enum BMFileHeader {
-	BMFH_binaryFormatVersion = 0,
-	BMFH_recordEndTime,
-	String:BMFH_recordName[MAX_RECORD_NAME_LENGTH],
-	BMFH_tickCount,
-	Float:BMFH_initialPosition[3],
-	Float:BMFH_initialAngles[3],
-	BMFH_bookmarkCount
-};
+enum struct BMFileHeader {
+	int BMFH_binaryFormatVersion;
+	int BMFH_recordEndTime;
+	char BMFH_recordName[MAX_RECORD_NAME_LENGTH];
+	int BMFH_tickCount;
+	float BMFH_initialPosition[3];
+	float BMFH_initialAngles[3];
+	int BMFH_bookmarkCount;
+}
 
 /**
  * Start to record the movements of a player.
  * It's stored in memory until told to write to disk.
- * 
+ *
  * Make sure the player isn't recording already.
- * 
+ *
  * @param client	The client to record
  * @param name		The name of the record (anything, not the filename)
  * @param category	The category to put this record in. This is used as a directory filename inside /data/botmimic/%CATEGORY%/%MAP_NAME%/stuff.rec
@@ -40,7 +40,7 @@ native void BotMimic_StartRecording(int client, const char[] name, const char[] 
 
 /**
  * Pause recording the current record.
- * 
+ *
  * @param client	The recording client, which should pause recording.
  * @error			Invalid client index, client not recording or recording already paused.
  */
@@ -48,7 +48,7 @@ native void BotMimic_PauseRecording(int client);
 
 /**
  * Resume recording the current record.
- * 
+ *
  * @param client		The recording client, which should resume recording.
  * @error				Invalid client index, client not recording or record not paused.
  */
@@ -65,7 +65,7 @@ native bool BotMimic_IsRecordingPaused(int client);
 
 /**
  * Stop recording and save or discard the record
- * 
+ *
  * @param client	The client which was recording
  * @param save		Save the record (true) or discard (false)
  */
@@ -84,7 +84,7 @@ native void BotMimic_SaveBookmark(int client, const char[] name);
 
 /**
  * Deletes a record and does some checks, that the file is really a record.
- * 
+ *
  * @param path		The Path to the .rec recording file to delete.
  * @return			Number of bots, which were mimicing this record or -1 on error (file not found/invalid)
  */
@@ -92,7 +92,7 @@ native int BotMimic_DeleteRecord(const char[] path);
 
 /**
  * Is the player currently recording something?
- * 
+ *
  * @param client	The client to check
  * @return			true, if player is recording, false otherwise
  */
@@ -100,7 +100,7 @@ native bool BotMimic_IsPlayerRecording(int client);
 
 /**
  * Is the player currently mimicing something?
- * 
+ *
  * @param client	The client to check
  * @return			true, if the player is mimicing, false otherwise
  */
@@ -182,7 +182,7 @@ native ArrayList BotMimic_GetLoadedRecordCategoryList();
  * @param iFileHeader	An array to store the file header in.
  * @return			BM_NoError if all went smooth, see BMError definition.
  */
-native BMError BotMimic_GetFileHeaders(const char[] path, int iFileHeader[BMFileHeader], int size = view_as<int>(BMFileHeader));
+native BMError BotMimic_GetFileHeaders(const char[] path, any[] iFileHeader, int size);
 
 /**
  * Get the category of a record.
@@ -270,7 +270,7 @@ forward void BotMimic_OnRecordSaved(int client, char[] name, char[] category, ch
 
 /**
  * Called when a record was deleted.
- * 
+ *
  * @param name		The name of the record (stored in file header)
  * @param category	The category of the file. (If it wasn't loaded before it defaults to "default".)
  * @param path		The path to the deleted file.
@@ -316,7 +316,7 @@ forward void BotMimic_OnPlayerMimicBookmark(int client, const char[] bookmark);
 
 /**
  * Translate an error id to a human readable string
- * 
+ *
  * @param error		The error id
  * @param str		The string to store the error message in
  * @param maxlen	The maximal length of the error message string
@@ -348,7 +348,7 @@ stock void BotMimic_GetErrorString(BMError error, char[] str, int maxlen)
 	}
 }
 
-public SharedPlugin __pl_botmimic = 
+public SharedPlugin __pl_botmimic =
 {
 	name = "botmimic",
 	file = "botmimic.smx",
